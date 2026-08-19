@@ -1,0 +1,96 @@
+{
+  "name": "@deepseek-ai/dsh-plugin-smart-commands",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 智能指令与链式工作流模板插件",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json -w",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "cordis",
+    "plugin",
+    "subagent",
+    "workflow"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "dsh": {
+    "displayName": "Smart Commands & Chains",
+    "categories": [
+      "Productivity",
+      "Multi-Agent",
+      "Workflow"
+    ],
+    "activationEvents": [
+      "onStartup"
+    ],
+    "tools": [
+      {
+        "name": "smart_command_run",
+        "description": "执行已配置的智能指令模板或 Chain 工作流。支持模型路由切换、上下文 Fork 继承、子代理隔离委托及多阶段任务流转。"
+      },
+      {
+        "name": "smart_command_list",
+        "description": "查询当前可用的智能指令模板清单、参数说明及功能描述。"
+      },
+      {
+        "name": "smart_command_manage",
+        "description": "动态创建、更新或删除指令模板（写入 .dsh/commands/ 目录）。"
+      }
+    ],
+    "configuration": {
+      "title": "Smart Commands Configuration",
+      "properties": {
+        "smartCommands.userTemplatesDir": {
+          "type": "string",
+          "default": "~/.dsh/commands",
+          "description": "用户全局指令模板目录路径"
+        },
+        "smartCommands.projectTemplatesDir": {
+          "type": "string",
+          "default": ".dsh/commands",
+          "description": "工作区项目级指令模板目录路径"
+        },
+        "smartCommands.maxChainSteps": {
+          "type": "number",
+          "default": 10,
+          "description": "单次 Chain 允许执行的最大步骤数上限（防死循环）"
+        },
+        "smartCommands.maxConcurrency": {
+          "type": "number",
+          "default": 5,
+          "description": "并行步骤的最大并发子任务数"
+        }
+      }
+    }
+  }
+}
