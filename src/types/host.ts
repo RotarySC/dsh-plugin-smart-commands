@@ -1,4 +1,4 @@
-import type { ToolFilter } from './chain.ts'
+import type { ToolFilter } from './chain.js'
 
 export interface ModelRef {
   readonly provider?: string
@@ -37,6 +37,7 @@ export interface SubagentStartRequest {
   readonly persona?: string
   readonly toolFilter?: ToolFilter
   readonly maxDepth?: number
+  readonly cwd?: string
 }
 
 export interface SubagentRunResult {

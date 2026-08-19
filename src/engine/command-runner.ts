@@ -1,0 +1,250 @@
+import type { CommandRunResult, ListCommandItem, ManageTemplateRequest, RunCommandRequest, StepResult } from '../types/execution.js'
+import type { CommandTemplate, RuntimeOverrides } from '../types/template.js'
+import type { HostAgent, PluginConfig, SmartCommandsHost } from '../types/host.js'
+import { TemplateLoader } from '../loader/template-loader.js'
+import { TemplateValidationError } from '../loader/frontmatter-parser.js'
+import { extractParameterSlots, normalizeArgs, renderTemplate, splitModelSpecs, type ResolvedModelRef } from './template-engine.js'
+import { formatModel, selectModel, withModelOverride } from './model-router.js'
+import { ChainExecutor } from './chain-executor.js'
+import { SubagentBridge } from './subagent-bridge.js'
+
+const COMMAND_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_/-]*$/
+
+export interface CommandRunnerOptions {
+  readonly host: SmartCommandsHost
+  readonly loader: TemplateLoader
+  readonly config: PluginConfig
+}
+
+function applyOverrides(template: CommandTemplate, overrides?: RuntimeOverrides): CommandTemplate {
+  if (!overrides) return template
+  return {
+    ...template,
+    models: overrides.model ? splitModelSpecs(overrides.model) : template.models,
+    restore: overrides.restore ?? template.restore,
+    subagent: overrides.subagent ?? template.subagent,
+    context: overrides.context ?? template.context,
+    tools: overrides.tools ?? template.tools,
+    loop: overrides.loop ?? template.loop,
+    converge: overrides.converge ?? template.converge,
+    worktree: overrides.worktree ?? template.worktree,
+  }
+}
+
+function modelRefFromSelected(selected: { model: ResolvedModelRef } | undefined, fallback?: string): ResolvedModelRef {
+  if (selected) return selected.model
+  if (fallback) {
+    const slash = fallback.lastIndexOf('/')
+    if (slash > 0) return { provider: fallback.slice(0, slash), id: fallback.slice(slash + 1) }
+    return { id: fallback }
+  }
+  return { id: 'session-default' }
+}
+
+function uniqueFiles(steps: StepResult[]): string[] {
+  return [...new Set(steps.flatMap(step => step.changedFiles))]
+}
+
+function bindSkills(prompt: string, skills?: string[]): string {
+  if (!skills?.length) return prompt
+  return `Bound skills (load before acting): ${skills.join(', ')}\n\n${prompt}`
+}
+
+export class CommandRunner {
+  constructor(private readonly options: CommandRunnerOptions) {}
+
+  async ready(): Promise<void> {
+    await this.options.loader.ready()
+  }
+
+  catalogErrors(): Array<{ path: string; error: string }> {
+    return this.options.loader.catalog.errors
+  }
+
+  list(): ListCommandItem[] {
+    return this.options.loader.list().map(template => ({
+      name: template.name,
+      description: template.description,
+      origin: template.origin,
+      sourcePath: template.sourcePath,
+      hasChain: Boolean(template.chain?.length),
+      models: template.models,
+      subagent: template.subagent,
+      context: template.context,
+      parameters: extractParameterSlots([
+        template.body,
+        ...(template.chain ?? []).flatMap(step => 'parallel' in step
+          ? step.parallel.map(task => task.task)
+          : [step.task]),
+      ].join('\n')),
+    }))
+  }
+
+  async run(request: RunCommandRequest, signal: AbortSignal, parent?: HostAgent): Promise<CommandRunResult> {
+    const started = this.now()
+    try {
+      await this.ready()
+      const loaded = this.options.loader.get(request.command)
+      if (!loaded) {
+        return {
+          ok: false,
+          command: request.command,
+          error: `unknown smart command: ${request.command}`,
+          hint: 'Call smart_command_list to inspect available templates.',
+        }
+      }
+      const template = applyOverrides(loaded, request.overrides)
+      const args = normalizeArgs(request.args)
+      const selected = selectModel(template.models, this.options.host.modelRegistry)
+      if (template.models.length > 0 && !selected) {
+        return {
+          ok: false,
+          command: template.name,
+          error: `no available model matched fallback chain: ${template.models.join(', ')}`,
+          hint: 'Configure an available model or pass overrides.model.',
+        }
+      }
+      const model = modelRefFromSelected(selected, this.options.host.modelSession?.getModel())
+      const rendered = renderTemplate(template.body, args, model, template.name)
+      if (rendered.error) {
+        return { ok: false, command: template.name, error: rendered.error }
+      }
+
+      return await withModelOverride(this.options.host.modelSession, selected, template.restore, async () => {
+        const loop = template.loop ?? 1
+        const steps: StepResult[] = []
+        let lastText = ''
+        let rounds = 0
+        const taskText = args.join(' ')
+        const bridge = new SubagentBridge({
+          ...this.options.host.subagents ? { subagents: this.options.host.subagents } : {},
+          ...parent ? { parent } : this.options.host.parentAgent ? { parent: this.options.host.parentAgent } : {},
+          config: this.options.config,
+          ...parent?.submit ? { fallback: (prompt, runSignal) => parent.submit!(prompt, runSignal) } : {},
+        })
+
+        for (let round = 1; round <= loop; round++) {
+          if (signal.aborted) return { ok: false, command: template.name, error: 'Operation cancelled by user' }
+          rounds = round
+          if (template.chain?.length) {
+            const executor = new ChainExecutor(bridge, this.options.config, () => this.now(), template.context)
+            const chainResult = await executor.run(template.chain, {
+              task: taskText,
+              args,
+              depth: 1,
+              signal,
+              maxConcurrency: this.options.config.maxConcurrency,
+              workspaceRoot: this.options.host.workspaceRoot,
+              worktree: template.worktree,
+              ...template.skills ? { skills: template.skills } : {},
+            })
+            steps.push(...chainResult.steps)
+            lastText = chainResult.text
+            if (template.converge && chainResult.files.length === 0) break
+            continue
+          }
+
+          const prompt = bindSkills(rendered.content.trim(), template.skills)
+          if (!prompt) {
+            return { ok: false, command: template.name, error: `Prompt \`${template.name}\` rendered to an empty message.` }
+          }
+          const shouldDelegate = template.subagent !== false
+          if (shouldDelegate) {
+            const result = await bridge.run({
+              prompt,
+              label: template.name,
+              context: template.context,
+              signal,
+              depth: 1,
+              ...typeof template.subagent === 'string' ? { agent: template.subagent } : {},
+              ...selected ? { model: formatModel(selected.model) } : {},
+              ...template.tools ? { tools: template.tools } : {},
+              ...template.skills ? { skills: template.skills } : {},
+            })
+            lastText = result.text
+            steps.push({
+              name: template.name,
+              text: result.text,
+              durationMs: 0,
+              changedFiles: result.changedFiles ?? [],
+              ...typeof template.subagent === 'string' ? { agent: template.subagent } : {},
+              ...selected ? { model: formatModel(selected.model) } : {},
+            })
+            if (template.converge && (result.changedFiles?.length ?? 0) === 0) break
+          } else if (parent?.submit) {
+            const result = await parent.submit(prompt, signal)
+            lastText = result.text
+            steps.push({
+              name: template.name,
+              text: result.text,
+              durationMs: 0,
+              changedFiles: result.changedFiles ?? [],
+            })
+          } else {
+            lastText = prompt
+            steps.push({
+              name: template.name,
+              text: prompt,
+              durationMs: 0,
+              changedFiles: [],
+            })
+          }
+        }
+
+        return {
+          ok: true,
+          command: template.name,
+          ...selected ? { model: formatModel(selected.model) } : {},
+          restored: template.restore,
+          text: lastText,
+          steps,
+          files: uniqueFiles(steps),
+          durationMs: this.now() - started,
+          rounds,
+        }
+      })
+    } catch (error) {
+      return {
+        ok: false,
+        command: request.command,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  async manage(request: ManageTemplateRequest): Promise<{ ok: boolean; path?: string; error?: string }> {
+    await this.ready()
+    if (!COMMAND_NAME_PATTERN.test(request.name) || request.name.includes('..')) {
+      return { ok: false, error: `invalid template name: ${request.name}` }
+    }
+    try {
+      if (request.action === 'delete') {
+        const path = await this.options.loader.deleteProjectTemplate(request.name)
+        return { ok: true, path }
+      }
+      if (!request.content) {
+        return { ok: false, error: 'content is required for create/update' }
+      }
+      if (request.action === 'create' && await this.options.loader.projectTemplateExists(request.name)) {
+        return { ok: false, error: `template already exists: ${request.name}` }
+      }
+      if (request.action === 'update' && !await this.options.loader.projectTemplateExists(request.name)) {
+        const existing = this.options.loader.get(request.name)
+        if (!existing || existing.origin !== 'project') {
+          return { ok: false, error: `project template not found: ${request.name}` }
+        }
+      }
+      const path = await this.options.loader.writeProjectTemplate(request.name, request.content)
+      return { ok: true, path }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof TemplateValidationError || error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  private now(): number {
+    return this.options.host.now?.() ?? Date.now()
+  }
+}

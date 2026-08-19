@@ -1,4 +1,4 @@
-import type { ChainStep, ToolFilter } from './chain.ts'
+import type { ChainStep, ToolFilter } from './chain.js'
 
 /**
  * Parsed Markdown command template. Frontmatter is the execution strategy;

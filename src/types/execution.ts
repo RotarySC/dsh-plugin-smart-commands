@@ -1,5 +1,5 @@
-import type { ToolFilter } from './chain.ts'
-import type { RuntimeOverrides } from './template.ts'
+import type { ToolFilter } from './chain.js'
+import type { RuntimeOverrides } from './template.js'
 
 export interface StepResult {
   readonly name: string
@@ -48,6 +48,7 @@ export interface ListCommandItem {
   readonly models: string[]
   readonly subagent: boolean | string
   readonly context: 'fresh' | 'fork'
+  readonly parameters: string[]
 }
 
 export interface ManageTemplateRequest {

@@ -4,15 +4,15 @@ export type {
   SequentialStep,
   ChainStep,
   ToolFilter,
-} from './chain.ts'
-export { isParallelStep, isSequentialStep } from './chain.ts'
+} from './chain.js'
+export { isParallelStep, isSequentialStep } from './chain.js'
 
 export type {
   CommandTemplate,
   RuntimeOverrides,
   TemplateFrontmatter,
   TemplateParseResult,
-} from './template.ts'
+} from './template.js'
 
 export type {
   CommandRunFailure,
@@ -23,7 +23,7 @@ export type {
   ManageTemplateRequest,
   RunCommandRequest,
   StepResult,
-} from './execution.ts'
+} from './execution.js'
 
 export type {
   HostAgent,
@@ -41,5 +41,5 @@ export type {
   SmartCommandsHost,
   SubagentRunResult,
   SubagentStartRequest,
-} from './host.ts'
-export { DEFAULT_PLUGIN_CONFIG } from './host.ts'
+} from './host.js'
+export { DEFAULT_PLUGIN_CONFIG } from './host.js'
