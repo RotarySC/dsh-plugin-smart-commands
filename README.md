@@ -126,7 +126,20 @@ started continuable subagent <subagentId>
 - `smart_command_list`
 - `smart_command_manage` `{ action: create|update|delete, name, content? }`（只写项目目录）
 
-这三个是给主模型用的 Tool Call。人类命令走上一节的斜杠入口，两者独立。
+这三个是给主模型用的 Tool Call。人类命令走上一节的斜杠入口，两者独立。`smart_command_manage` 仍然只写项目目录。
+
+## 设置页
+
+Web 设置侧栏有独立的 **智能指令** 页（`settings.section` id `smart-commands`）。浏览器半侧走 `exports["./client"]` + `dsh.client`，通过 Host Remote 命名空间 `smartCommands` 管目录：
+
+- 搜索名称 / 斜杠名 / 说明；分段筛选全部或仅 `subagent`。
+- 列表式展示模板；项目模板的标签直接显示其所在工作区目录名（如 `dsh-plugin-smart-commands`），用户模板显示「用户」。
+- 勾选模板后可批量导出为 store 模式的 `smart-commands.zip`（结构为 `user|project/<name>.md`，包含嵌套路径），也可「删除选中」。
+- 导入弹窗：支持拖放或点选 `.md`、导出的 zip 或旧版 JSON，并可显式选择写入 **user**（`~/.dsh/commands`）或当前选中的 **project**（`<workspace>/.dsh/commands`），确认后执行写入。
+- 每次新建/复制也可选择写入 **user** 或 **project**。
+- 运行时仍是「同名 project 覆盖 user」；管理页会把两层都列出来，被覆盖的用户模板带「已被项目覆盖」标记。
+
+此页不执行模板。缺少 `ctx.remote` 时页面降级提示，斜杠命令与模型工具不受影响。改完 client 后重建 `dist/client.js`，必要时 `dsh plugin --profile web add .`，然后刷新现有 Web GUI。
 
 ## 配置
 

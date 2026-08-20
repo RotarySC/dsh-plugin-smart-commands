@@ -12,11 +12,21 @@ describe('profile bundle manifest', () => {
       name: string
       files: string[]
       exports: Record<string, unknown>
-      dsh?: { bundle?: { patch?: string } }
+      dsh?: { bundle?: { patch?: string }; client?: { platform?: string } }
     }
     expect(pkg.dsh?.bundle?.patch).toBe('./cordis.patch.yml')
+    expect(pkg.dsh?.client?.platform).toBe('web')
     expect(pkg.files).toEqual(expect.arrayContaining(['dist', 'cordis.patch.yml']))
     expect(pkg.exports['./cordis.patch.yml']).toBe('./cordis.patch.yml')
+    expect(pkg.exports['./client']).toBe('./dist/client.js')
+    expect(pkg.exports['./typert']).toMatchObject({
+      import: './dist/typert.host.js',
+      default: './dist/typert.host.js',
+    })
+    expect(pkg.exports['./remote']).toMatchObject({
+      import: './dist/typert.remote-client.js',
+      default: './dist/typert.remote-client.js',
+    })
 
     const patch = parseYaml(await readFile(join(root, 'cordis.patch.yml'), 'utf8'))
     expect(Array.isArray(patch)).toBe(true)

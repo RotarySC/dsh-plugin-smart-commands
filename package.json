@@ -10,6 +10,17 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./client": "./dist/client.js",
+    "./typert": {
+      "types": "./dist/typert.host.d.ts",
+      "import": "./dist/typert.host.js",
+      "default": "./dist/typert.host.js"
+    },
+    "./remote": {
+      "types": "./dist/typert.remote-client.d.ts",
+      "import": "./dist/typert.remote-client.js",
+      "default": "./dist/typert.remote-client.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -22,12 +33,13 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
+    "build:client": "node scripts/build-client.mjs",
     "watch": "tsc -p tsconfig.json -w",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepare": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -40,16 +52,37 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "yaml": "^2.8.1"
+    "yaml": "^2.8.1",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.8"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.8",
     "@types/node": "^22.19.1",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.1",
+    "esbuild": "^0.25.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.3.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     },
     "displayName": "Smart Commands & Chains",
     "categories": [

@@ -8,6 +8,18 @@ export type {
 export { isParallelStep, isSequentialStep } from './chain.js'
 
 export type {
+  CatalogMutationResult,
+  InventoryError,
+  InventoryTemplate,
+  TemplateCopyRequest,
+  TemplateDocument,
+  TemplateIdentity,
+  TemplateInventory,
+  TemplateOrigin,
+  TemplateWriteRequest,
+} from './catalog.js'
+
+export type {
   CommandTemplate,
   RuntimeOverrides,
   TemplateFrontmatter,

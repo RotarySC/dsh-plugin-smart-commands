@@ -2,22 +2,26 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { apply, type CordisLikeContext } from '../src/index.ts'
 
 function forbiddenProxy(injected: Record<string, unknown> = {}): CordisLikeContext {
-  return new Proxy({
+  const target = {
     get(name: string) {
       return injected[name]
     },
-    inject() {},
+    inject(_deps: string[], callback: (scoped: CordisLikeContext) => void) {
+      callback(ctx)
+    },
     effect(callback: () => () => void) {
       return callback()
     },
-  } as CordisLikeContext, {
-    get(target, prop, receiver) {
+  } as CordisLikeContext
+  const ctx = new Proxy(target, {
+    get(inner, prop, receiver) {
       if (prop === 'get' || prop === 'inject' || prop === 'effect') {
-        return Reflect.get(target, prop, receiver)
+        return Reflect.get(inner, prop, receiver)
       }
       throw new Error(`cannot get property "${String(prop)}" without inject`)
     },
   })
+  return ctx
 }
 
 describe('cordis apply', () => {
@@ -35,5 +39,46 @@ describe('cordis apply', () => {
     }
     const ctx = forbiddenProxy({ tools })
     expect(() => apply(ctx)).not.toThrow()
+  })
+
+  it('reads workspace.path and sandboxPolicy.workspaceRoot without touching ctx.workspace', () => {
+    const tools = {
+      register() {
+        return () => undefined
+      },
+    }
+    const ctx = forbiddenProxy({
+      tools,
+      workspace: { path: 'C:\\workspaces\\app' },
+      sandboxPolicy: { workspaceRoot: 'C:\\fallback' },
+    })
+    expect(() => apply(ctx)).not.toThrow()
+  })
+
+  it('skips the Typert gateway when ctx.reflect.provide is absent', () => {
+    const tools = {
+      register() {
+        return () => undefined
+      },
+    }
+    expect(() => apply(forbiddenProxy({ tools }))).not.toThrow()
+  })
+
+  it('registers TYPERT when typert is injectable', () => {
+    const seen: unknown[] = []
+    const tools = {
+      register() {
+        return () => undefined
+      },
+    }
+    const typert = {
+      register(contribution: unknown) {
+        seen.push(contribution)
+        return () => undefined
+      },
+    }
+    expect(() => apply(forbiddenProxy({ tools, typert }))).not.toThrow()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ package: '@deepseek-ai/dsh-plugin-smart-commands', face: 'host' })
   })
 })

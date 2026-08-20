@@ -3,6 +3,7 @@ import type { CommandTemplate, RuntimeOverrides } from '../types/template.js'
 import type { HostAgent, PluginConfig, SmartCommandsHost } from '../types/host.js'
 import { TemplateLoader } from '../loader/template-loader.js'
 import { TemplateValidationError } from '../loader/frontmatter-parser.js'
+import { TEMPLATE_NAME_PATTERN } from '../loader/names.js'
 import { extractTemplateSlots, normalizeArgs, renderTemplate, splitModelSpecs, type ResolvedModelRef } from './template-engine.js'
 import { formatModel, parseModelRef, selectModel, withModelOverride } from './model-router.js'
 import { loadAvailableModels } from '../host/dsh-adapter.js'
@@ -10,7 +11,7 @@ import { slashCommandNameFor } from './slash-name.js'
 import { ChainExecutor } from './chain-executor.js'
 import { SubagentBridge } from './subagent-bridge.js'
 
-const COMMAND_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_/-]*$/
+const COMMAND_NAME_PATTERN = TEMPLATE_NAME_PATTERN
 
 export interface CommandRunnerOptions {
   readonly host: SmartCommandsHost
