@@ -1,0 +1,7 @@
+# Profile bundle patch for `dsh plugin --profile <name> add`.
+# Keep this a plain insert (id + name only): dshmarket hot-mount rejects
+# inject/config/expression rows and then reports the plugin as a plain
+# dependency even though dsh.bundle is declared.
+- insert:
+    - id: smart-commands
+      name: '@deepseek-ai/dsh-plugin-smart-commands'

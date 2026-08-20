@@ -10,6 +10,12 @@ export interface ModelRegistry {
   readonly available: readonly ModelRef[]
 }
 
+export interface HostLlm {
+  list?(): unknown
+  listProviders?(): Array<{ id?: string }>
+  listModels?(provider: string): Promise<Array<{ id?: string; model?: string }>> | Array<{ id?: string; model?: string }>
+}
+
 export interface ModelSession {
   getModel(): string | undefined
   setModel(model: string | undefined): Promise<void> | void
@@ -25,6 +31,7 @@ export interface HostAgent {
 export interface HostTurnResult {
   readonly text: string
   readonly changedFiles?: string[]
+  readonly childId?: string
 }
 
 export interface SubagentStartRequest {
@@ -44,11 +51,18 @@ export interface SubagentRunResult {
   readonly text: string
   readonly stopReason: 'completed' | 'aborted' | 'error' | string
   readonly changedFiles?: string[]
+  readonly childId?: string
+}
+
+export interface ContinuableStartResult {
+  readonly childId: string
+  readonly messageId?: string
 }
 
 export interface HostSubagents {
   list(): string[]
   start(request: SubagentStartRequest): Promise<SubagentRunResult>
+  startContinuable?(request: SubagentStartRequest): Promise<ContinuableStartResult>
 }
 
 export interface HostConfiguration {
@@ -61,10 +75,22 @@ export interface HostToolExecution {
   readonly agent?: HostAgent
 }
 
+export interface HostToolContentBlock {
+  readonly type: 'text'
+  readonly text: string
+}
+
+export interface HostToolOutput {
+  readonly schema: Record<string, unknown>
+  render(args: Record<string, unknown>, value: unknown): HostToolContentBlock[]
+  presentationMeta?(args: Record<string, unknown>, value: unknown): unknown
+}
+
 export interface HostToolDefinition {
   readonly name: string
   readonly description: string
   readonly parameters: Record<string, unknown>
+  readonly output: HostToolOutput
   execute(args: Record<string, unknown>, exec: HostToolExecution): Promise<unknown>
 }
 
@@ -113,6 +139,7 @@ export interface SmartCommandsHost {
   readonly tools?: HostTools
   readonly commands?: HostCommands
   readonly subagents?: HostSubagents
+  readonly llm?: HostLlm
   readonly modelRegistry?: ModelRegistry
   readonly modelSession?: ModelSession
   readonly parentAgent?: HostAgent

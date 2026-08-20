@@ -82,6 +82,33 @@ describe('subagent bridge', () => {
     expect(started[1]?.toolFilter).toEqual({ allow: ['read', 'edit'] })
   })
 
+  it('forwards model provider and id to the child agent', async () => {
+    const started: SubagentStartRequest[] = []
+    const bridge = new SubagentBridge({
+      config: DEFAULT_PLUGIN_CONFIG,
+      subagents: {
+        list: () => ['spawn'],
+        start: async request => {
+          started.push(request)
+          return { text: 'ok', stopReason: 'completed' }
+        },
+      },
+    })
+    await bridge.run({
+      prompt: 'do work',
+      label: 'work',
+      context: 'fresh',
+      signal: new AbortController().signal,
+      depth: 1,
+      model: 'deepseek-v4-flash',
+      modelProvider: 'opencode-go',
+    })
+    expect(started[0]?.agentOptions).toEqual({
+      provider: 'opencode-go',
+      model: 'deepseek-v4-flash',
+    })
+  })
+
   it('prefixes an isolated worktree path onto the delegated prompt', async () => {
     const started: SubagentStartRequest[] = []
     const bridge = new SubagentBridge({
@@ -105,6 +132,40 @@ describe('subagent bridge', () => {
     expect(started[0]?.cwd).toBe('C:/tmp/worktree-0')
     expect(started[0]?.prompt).toContain('C:/tmp/worktree-0')
     expect(started[0]?.prompt).toContain('fix api')
+  })
+
+  it('starts a continuable child instead of a one-shot run', async () => {
+    const oneShot: SubagentStartRequest[] = []
+    const continuable: SubagentStartRequest[] = []
+    const bridge = new SubagentBridge({
+      config: DEFAULT_PLUGIN_CONFIG,
+      subagents: {
+        list: () => ['spawn'],
+        start: async request => {
+          oneShot.push(request)
+          return { text: 'one-shot', stopReason: 'completed' }
+        },
+        startContinuable: async request => {
+          continuable.push(request)
+          return { childId: 'sess-continuable' }
+        },
+      },
+    })
+    const result = await bridge.run({
+      prompt: 'keep chatting',
+      label: 'chat',
+      context: 'fresh',
+      continuable: true,
+      signal: new AbortController().signal,
+      depth: 1,
+    })
+    expect(oneShot).toEqual([])
+    expect(continuable[0]?.prompt).toContain('keep chatting')
+    expect(result).toEqual({
+      text: 'started continuable subagent sess-continuable',
+      childId: 'sess-continuable',
+      changedFiles: [],
+    })
   })
 
   it('rejects delegation deeper than the configured maxDepth', async () => {

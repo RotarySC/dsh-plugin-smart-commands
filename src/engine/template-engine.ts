@@ -299,6 +299,18 @@ export function extractParameterSlots(content: string): string[] {
   return [...slots]
 }
 
+export function extractTemplateSlots(template: {
+  body: string
+  chain?: ReadonlyArray<{ task: string } | { parallel: ReadonlyArray<{ task: string }> }>
+}): string[] {
+  return extractParameterSlots([
+    template.body,
+    ...(template.chain ?? []).flatMap(step => 'parallel' in step
+      ? step.parallel.map(task => task.task)
+      : [step.task]),
+  ].join('\n'))
+}
+
 export function splitModelSpecs(model: string | undefined): string[] {
   if (!model) return []
   return model.split(',').map(spec => spec.trim()).filter(Boolean)

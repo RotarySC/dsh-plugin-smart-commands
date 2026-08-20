@@ -12,6 +12,7 @@ export interface CommandTemplate {
   readonly models: string[]
   readonly restore: boolean
   readonly subagent: boolean | string
+  readonly continuable: boolean
   readonly context: 'fresh' | 'fork'
   readonly tools?: ToolFilter
   readonly skills?: string[]
@@ -27,6 +28,7 @@ export interface TemplateFrontmatter {
   readonly model?: string
   readonly restore?: boolean
   readonly subagent?: boolean | string
+  readonly continuable?: boolean
   readonly context?: 'fresh' | 'fork'
   readonly tools?: ToolFilter
   readonly skills?: string[]
@@ -45,6 +47,7 @@ export interface RuntimeOverrides {
   readonly model?: string
   readonly context?: 'fresh' | 'fork'
   readonly subagent?: boolean | string
+  readonly continuable?: boolean
   readonly restore?: boolean
   readonly loop?: number
   readonly converge?: boolean

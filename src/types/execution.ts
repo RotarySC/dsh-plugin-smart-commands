@@ -22,6 +22,8 @@ export interface CommandRunSuccess {
   readonly files: string[]
   readonly durationMs: number
   readonly rounds: number
+  readonly subagentId?: string
+  readonly continuable?: boolean
 }
 
 export interface CommandRunFailure {
@@ -41,12 +43,14 @@ export interface RunCommandRequest {
 
 export interface ListCommandItem {
   readonly name: string
+  readonly slashName?: string
   readonly description: string
   readonly origin: 'user' | 'project'
   readonly sourcePath: string
   readonly hasChain: boolean
   readonly models: string[]
   readonly subagent: boolean | string
+  readonly continuable: boolean
   readonly context: 'fresh' | 'fork'
   readonly parameters: string[]
 }
@@ -62,6 +66,8 @@ export interface DelegationRequest {
   readonly label: string
   readonly agent?: string
   readonly model?: string
+  readonly modelProvider?: string
+  readonly continuable?: boolean
   readonly context: 'fresh' | 'fork'
   readonly tools?: ToolFilter
   readonly skills?: string[]

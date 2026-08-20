@@ -29,6 +29,7 @@ export type {
   HostAgent,
   HostCommands,
   HostConfiguration,
+  ContinuableStartResult,
   HostSubagents,
   HostToolDefinition,
   HostToolExecution,

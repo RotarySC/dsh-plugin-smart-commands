@@ -50,10 +50,28 @@ chain:
 
   it('accepts the shipped example templates', async () => {
     const examplesDir = fileURLToPath(new URL('../examples', import.meta.url))
-    for (const name of ['refactor-module.md', 'code-review.md', 'vuln-scan-and-fix.md']) {
+    for (const name of ['refactor-module.md', 'code-review.md', 'vuln-scan-and-fix.md', 'continuable-chat.md']) {
       const content = await readFile(join(examplesDir, name), 'utf8')
       expect(() => parseTemplateDocument(content)).not.toThrow()
     }
+  })
+
+  it('accepts continuable as a dedicated field or as subagent: continuable', () => {
+    const viaField = parseTemplateDocument(`---
+description: Keep chatting
+continuable: true
+---
+body
+`)
+    expect(viaField.frontmatter.continuable).toBe(true)
+    const viaSubagent = parseTemplateDocument(`---
+description: Keep chatting
+subagent: continuable
+---
+body
+`)
+    expect(viaSubagent.frontmatter.continuable).toBe(true)
+    expect(viaSubagent.frontmatter.subagent).toBe('continuable')
   })
 
   it('rejects unknown frontmatter fields at compile time', () => {

@@ -1,6 +1,33 @@
 import type { HostToolDefinition } from '../types/host.js'
 import type { CommandRunner } from '../engine/command-runner.js'
 import type { RuntimeOverrides } from '../types/template.js'
+import {
+  booleanField,
+  integerField,
+  jsonObjectSchema,
+  objectOutput,
+  renderOkOrError,
+  stringField,
+} from './tool-output.js'
+
+const runOutputSchema = jsonObjectSchema({
+  ok: booleanField('Whether the command completed successfully'),
+  command: stringField('Command name'),
+  error: stringField('Failure message'),
+  hint: stringField('Recovery hint'),
+  model: stringField('Selected model'),
+  restored: booleanField('Whether the parent session model was restored'),
+  text: stringField('Final command output'),
+  files: {
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Changed files',
+  },
+  durationMs: integerField('Wall-clock duration'),
+  rounds: integerField('Completed loop rounds'),
+  subagentId: stringField('Continuable child session id'),
+  continuable: booleanField('Whether a follow-up subagent was started'),
+})
 
 export function createRunSmartCommandTool(runner: CommandRunner): HostToolDefinition {
   return {
@@ -22,6 +49,12 @@ export function createRunSmartCommandTool(runner: CommandRunner): HostToolDefini
       },
       required: ['command'],
     },
+    output: objectOutput(runOutputSchema, (_args, value) => renderOkOrError(value, record => {
+      const command = typeof record.command === 'string' ? record.command : 'command'
+      const text = typeof record.text === 'string' ? record.text : ''
+      const child = typeof record.subagentId === 'string' ? `\nsubagentId: ${record.subagentId}` : ''
+      return text ? `${command}\n${text}${child}` : `${command}${child}`
+    })),
     async execute(args, exec) {
       if (exec.signal.aborted) {
         return { ok: false, error: 'Operation cancelled by user' }

@@ -1,6 +1,13 @@
 import type { HostToolDefinition } from '../types/host.js'
 import type { CommandRunner } from '../engine/command-runner.js'
 import type { ManageTemplateRequest } from '../types/execution.js'
+import { jsonObjectSchema, objectOutput, renderOkOrError, stringField } from './tool-output.js'
+
+const manageOutputSchema = jsonObjectSchema({
+  ok: { type: 'boolean' },
+  path: stringField('Written or deleted project template path'),
+  error: stringField('Failure message'),
+})
 
 export function createManageTemplateTool(runner: CommandRunner): HostToolDefinition {
   return {
@@ -24,6 +31,10 @@ export function createManageTemplateTool(runner: CommandRunner): HostToolDefinit
       },
       required: ['action', 'name'],
     },
+    output: objectOutput(manageOutputSchema, (_args, value) => renderOkOrError(value, record => {
+      const path = typeof record.path === 'string' ? record.path : ''
+      return path ? `Updated ${path}` : 'Template updated.'
+    })),
     async execute(args) {
       const action = args.action
       if (action !== 'create' && action !== 'update' && action !== 'delete') {

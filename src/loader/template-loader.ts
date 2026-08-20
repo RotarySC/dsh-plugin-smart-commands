@@ -68,6 +68,7 @@ function toTemplate(name: string, sourcePath: string, origin: 'user' | 'project'
     models: splitModelSpecs(parsed.frontmatter.model),
     restore: parsed.frontmatter.restore ?? true,
     subagent: parsed.frontmatter.subagent ?? false,
+    continuable: parsed.frontmatter.continuable === true || parsed.frontmatter.subagent === 'continuable',
     context: parsed.frontmatter.context ?? 'fresh',
     ...parsed.frontmatter.tools ? { tools: parsed.frontmatter.tools } : {},
     ...parsed.frontmatter.skills ? { skills: parsed.frontmatter.skills } : {},

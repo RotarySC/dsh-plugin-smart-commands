@@ -3,8 +3,10 @@ import type { CommandTemplate, RuntimeOverrides } from '../types/template.js'
 import type { HostAgent, PluginConfig, SmartCommandsHost } from '../types/host.js'
 import { TemplateLoader } from '../loader/template-loader.js'
 import { TemplateValidationError } from '../loader/frontmatter-parser.js'
-import { extractParameterSlots, normalizeArgs, renderTemplate, splitModelSpecs, type ResolvedModelRef } from './template-engine.js'
-import { formatModel, selectModel, withModelOverride } from './model-router.js'
+import { extractTemplateSlots, normalizeArgs, renderTemplate, splitModelSpecs, type ResolvedModelRef } from './template-engine.js'
+import { formatModel, parseModelRef, selectModel, withModelOverride } from './model-router.js'
+import { loadAvailableModels } from '../host/dsh-adapter.js'
+import { slashCommandNameFor } from './slash-name.js'
 import { ChainExecutor } from './chain-executor.js'
 import { SubagentBridge } from './subagent-bridge.js'
 
@@ -23,6 +25,7 @@ function applyOverrides(template: CommandTemplate, overrides?: RuntimeOverrides)
     models: overrides.model ? splitModelSpecs(overrides.model) : template.models,
     restore: overrides.restore ?? template.restore,
     subagent: overrides.subagent ?? template.subagent,
+    continuable: overrides.continuable ?? template.continuable,
     context: overrides.context ?? template.context,
     tools: overrides.tools ?? template.tools,
     loop: overrides.loop ?? template.loop,
@@ -33,11 +36,7 @@ function applyOverrides(template: CommandTemplate, overrides?: RuntimeOverrides)
 
 function modelRefFromSelected(selected: { model: ResolvedModelRef } | undefined, fallback?: string): ResolvedModelRef {
   if (selected) return selected.model
-  if (fallback) {
-    const slash = fallback.lastIndexOf('/')
-    if (slash > 0) return { provider: fallback.slice(0, slash), id: fallback.slice(slash + 1) }
-    return { id: fallback }
-  }
+  if (fallback) return parseModelRef(fallback)
   return { id: 'session-default' }
 }
 
@@ -61,30 +60,35 @@ export class CommandRunner {
     return this.options.loader.catalog.errors
   }
 
+  resolve(name: string): CommandTemplate | undefined {
+    return this.options.loader.get(name)
+      ?? this.options.loader.list().find(template => slashCommandNameFor(template.name) === name)
+  }
+
   list(): ListCommandItem[] {
-    return this.options.loader.list().map(template => ({
-      name: template.name,
-      description: template.description,
-      origin: template.origin,
-      sourcePath: template.sourcePath,
-      hasChain: Boolean(template.chain?.length),
-      models: template.models,
-      subagent: template.subagent,
-      context: template.context,
-      parameters: extractParameterSlots([
-        template.body,
-        ...(template.chain ?? []).flatMap(step => 'parallel' in step
-          ? step.parallel.map(task => task.task)
-          : [step.task]),
-      ].join('\n')),
-    }))
+    return this.options.loader.list().map(template => {
+      const slashName = slashCommandNameFor(template.name)
+      return {
+        name: template.name,
+        ...slashName ? { slashName } : {},
+        description: template.description,
+        origin: template.origin,
+        sourcePath: template.sourcePath,
+        hasChain: Boolean(template.chain?.length),
+        models: template.models,
+        subagent: template.subagent,
+        continuable: template.continuable,
+        context: template.context,
+        parameters: extractTemplateSlots(template),
+      }
+    })
   }
 
   async run(request: RunCommandRequest, signal: AbortSignal, parent?: HostAgent): Promise<CommandRunResult> {
     const started = this.now()
     try {
       await this.ready()
-      const loaded = this.options.loader.get(request.command)
+      const loaded = this.resolve(request.command)
       if (!loaded) {
         return {
           ok: false,
@@ -95,8 +99,19 @@ export class CommandRunner {
       }
       const template = applyOverrides(loaded, request.overrides)
       const args = normalizeArgs(request.args)
-      const selected = selectModel(template.models, this.options.host.modelRegistry)
-      if (template.models.length > 0 && !selected) {
+      const available = await loadAvailableModels(this.options.host.llm)
+      const sessionModel = this.options.host.modelSession?.getModel()
+      const registry = {
+        current: this.options.host.modelRegistry?.current
+          ?? (sessionModel
+            ? modelRefFromSelected(undefined, sessionModel)
+            : undefined),
+        available: available.length > 0
+          ? available
+          : this.options.host.modelRegistry?.available ?? [],
+      }
+      const selected = selectModel(template.models, registry)
+      if (template.models.length > 0 && !selected && !this.options.host.modelSession?.getModel()) {
         return {
           ok: false,
           command: template.name,
@@ -110,7 +125,10 @@ export class CommandRunner {
         return { ok: false, command: template.name, error: rendered.error }
       }
 
-      return await withModelOverride(this.options.host.modelSession, selected, template.restore, async () => {
+      const shouldDelegate = template.subagent !== false || template.continuable
+      const overrideParentSession = !shouldDelegate && !template.chain?.length
+      const restored = overrideParentSession && template.restore
+      const execute = async (): Promise<CommandRunResult> => {
         const loop = template.loop ?? 1
         const steps: StepResult[] = []
         let lastText = ''
@@ -124,7 +142,9 @@ export class CommandRunner {
         })
 
         for (let round = 1; round <= loop; round++) {
-          if (signal.aborted) return { ok: false, command: template.name, error: 'Operation cancelled by user' }
+          if (signal.aborted) {
+            return { ok: false as const, command: template.name, error: 'Operation cancelled by user' }
+          }
           rounds = round
           if (template.chain?.length) {
             const executor = new ChainExecutor(bridge, this.options.config, () => this.now(), template.context)
@@ -146,9 +166,8 @@ export class CommandRunner {
 
           const prompt = bindSkills(rendered.content.trim(), template.skills)
           if (!prompt) {
-            return { ok: false, command: template.name, error: `Prompt \`${template.name}\` rendered to an empty message.` }
+            return { ok: false as const, command: template.name, error: `Prompt \`${template.name}\` rendered to an empty message.` }
           }
-          const shouldDelegate = template.subagent !== false
           if (shouldDelegate) {
             const result = await bridge.run({
               prompt,
@@ -156,8 +175,14 @@ export class CommandRunner {
               context: template.context,
               signal,
               depth: 1,
-              ...typeof template.subagent === 'string' ? { agent: template.subagent } : {},
-              ...selected ? { model: formatModel(selected.model) } : {},
+              ...template.continuable ? { continuable: true } : {},
+              ...typeof template.subagent === 'string' && template.subagent !== 'continuable'
+                ? { agent: template.subagent }
+                : {},
+              ...selected ? {
+                model: selected.model.id,
+                ...selected.model.provider ? { modelProvider: selected.model.provider } : {},
+              } : {},
               ...template.tools ? { tools: template.tools } : {},
               ...template.skills ? { skills: template.skills } : {},
             })
@@ -167,9 +192,26 @@ export class CommandRunner {
               text: result.text,
               durationMs: 0,
               changedFiles: result.changedFiles ?? [],
-              ...typeof template.subagent === 'string' ? { agent: template.subagent } : {},
+              ...typeof template.subagent === 'string' && template.subagent !== 'continuable'
+                ? { agent: template.subagent }
+                : {},
               ...selected ? { model: formatModel(selected.model) } : {},
             })
+            if (template.continuable) {
+              return {
+                ok: true as const,
+                command: template.name,
+                ...selected ? { model: formatModel(selected.model) } : {},
+                restored,
+                text: result.text,
+                steps,
+                files: uniqueFiles(steps),
+                durationMs: this.now() - started,
+                rounds,
+                ...result.childId ? { subagentId: result.childId } : {},
+                continuable: true,
+              }
+            }
             if (template.converge && (result.changedFiles?.length ?? 0) === 0) break
           } else if (parent?.submit) {
             const result = await parent.submit(prompt, signal)
@@ -192,17 +234,20 @@ export class CommandRunner {
         }
 
         return {
-          ok: true,
+          ok: true as const,
           command: template.name,
           ...selected ? { model: formatModel(selected.model) } : {},
-          restored: template.restore,
+          restored,
           text: lastText,
           steps,
           files: uniqueFiles(steps),
           durationMs: this.now() - started,
           rounds,
         }
-      })
+      }
+      return overrideParentSession
+        ? await withModelOverride(this.options.host.modelSession, selected, template.restore, execute)
+        : await execute()
     } catch (error) {
       return {
         ok: false,

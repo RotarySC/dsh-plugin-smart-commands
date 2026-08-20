@@ -8,6 +8,7 @@ const FRONTMATTER_KEYS = new Set([
   'model',
   'restore',
   'subagent',
+  'continuable',
   'context',
   'tools',
   'skills',
@@ -218,11 +219,14 @@ export function parseTemplateDocument(content: string): TemplateParseResult {
   const description = asString(parsed.description, 'description')
   const subagent = parsed.subagent
   if (subagent !== undefined && typeof subagent !== 'boolean' && typeof subagent !== 'string') {
-    throw new TemplateValidationError('subagent must be a boolean or persona string')
+    throw new TemplateValidationError('subagent must be a boolean, persona string, or "continuable"')
   }
   if (typeof subagent === 'string' && subagent.trim() === '') {
     throw new TemplateValidationError('subagent persona must be a non-empty string')
   }
+  const continuable = parsed.continuable !== undefined
+    ? asBoolean(parsed.continuable, 'continuable')
+    : subagent === 'continuable'
   const loop = parsed.loop
   if (loop !== undefined && (typeof loop !== 'number' || !Number.isInteger(loop) || loop < 1 || loop > 99)) {
     throw new TemplateValidationError('loop must be an integer between 1 and 99')
@@ -232,6 +236,7 @@ export function parseTemplateDocument(content: string): TemplateParseResult {
     ...parsed.model !== undefined ? { model: asString(parsed.model, 'model') } : {},
     ...parsed.restore !== undefined ? { restore: asBoolean(parsed.restore, 'restore') } : {},
     ...subagent !== undefined ? { subagent } : {},
+    ...continuable ? { continuable: true } : {},
     ...parsed.context !== undefined ? { context: parseContext(parsed.context, 'context') } : {},
     ...parsed.tools !== undefined ? { tools: parseToolFilter(parsed.tools, 'tools') } : {},
     ...parsed.skills !== undefined ? { skills: asStringArray(parsed.skills, 'skills') } : {},

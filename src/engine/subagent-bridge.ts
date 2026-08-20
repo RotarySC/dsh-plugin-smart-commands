@@ -51,18 +51,35 @@ export class SubagentBridge {
       ? `Isolated working directory (edit only files under this path):\n${request.cwd}\n\n${withSkills}`
       : withSkills
     if (this.options.subagents) {
-      const result = await this.options.subagents.start({
+      const startRequest = {
         provider,
         prompt,
         label: request.label,
         ...this.options.parent ? { parent: this.options.parent } : {},
         signal: request.signal,
-        ...request.model ? { agentOptions: { model: request.model } } : {},
-        ...typeof request.agent === 'string' ? { persona: request.agent } : {},
+        ...request.model || request.modelProvider ? {
+          agentOptions: {
+            ...request.modelProvider ? { provider: request.modelProvider } : {},
+            ...request.model ? { model: request.model } : {},
+          },
+        } : {},
+        ...typeof request.agent === 'string' && request.agent !== 'continuable' ? { persona: request.agent } : {},
         ...request.tools ? { toolFilter: request.tools } : {},
         maxDepth: this.options.config.maxDelegationDepth,
         ...request.cwd ? { cwd: request.cwd } : {},
-      })
+      }
+      if (request.continuable) {
+        if (!this.options.subagents.startContinuable) {
+          throw new Error('ctx.subagents.startContinuable is unavailable; this host cannot keep a follow-up subagent')
+        }
+        const started = await this.options.subagents.startContinuable(startRequest)
+        return {
+          text: `started continuable subagent ${started.childId}`,
+          childId: started.childId,
+          changedFiles: [],
+        }
+      }
+      const result = await this.options.subagents.start(startRequest)
       if (result.stopReason !== 'completed') {
         throw new Error(textFromStop(result))
       }
