@@ -55,6 +55,10 @@ export const zh = {
   selected: '已选',
   placeholderName: 'review',
   placeholderBody: '---\ndescription: 说明\n---\n请审查 $1\n',
+  promptButton: '提示词',
+  searchPlaceholder: '搜索标题、标签或内容...',
+  noMatchingTemplates: '无匹配模板',
+  loadingTemplates: '加载模板中...',
 }
 
 export type SmartCommandsLocaleKey = keyof typeof zh
@@ -116,4 +120,8 @@ export const en: Record<SmartCommandsLocaleKey, string> = {
   selected: 'Selected',
   placeholderName: 'review',
   placeholderBody: '---\ndescription: Describe this command\n---\nReview $1\n',
+  promptButton: 'Prompts',
+  searchPlaceholder: 'Search title, tags, or content...',
+  noMatchingTemplates: 'No matching templates',
+  loadingTemplates: 'Loading templates...',
 }

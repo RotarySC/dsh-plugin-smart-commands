@@ -1,6 +1,7 @@
 import { TYPERT_REMOTE } from './remote-contribution.js'
 import { setActiveSmartCommandsConnect } from './connect.js'
 import { SmartCommandsSection, type SmartCommandsRemote } from './SmartCommandsSection.js'
+import { PromptMenuButton } from './PromptMenuButton.js'
 import { en, zh, type SmartCommandsLocaleKey } from './locales.js'
 import { currentWorkspacePath } from './workspace.js'
 
@@ -100,6 +101,8 @@ export function apply(ctx: ClientContext): void {
       // Optional: settings still work against the user catalog.
     }
   }
+
+  // Register Settings Section
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'smart-commands',
@@ -108,4 +111,13 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ t, connect, workspaceRoot }),
   }, SmartCommandsSection))
+
+  // Register Prompt Dropdown in Composer Tool Row
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left',
+    id: 'smart-commands.prompt-trigger',
+    order: 20,
+    locale: NS,
+    inject: () => ({ t, connect, workspaceRoot }),
+  }, PromptMenuButton))
 }
