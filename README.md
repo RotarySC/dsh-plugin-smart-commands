@@ -128,7 +128,19 @@ started continuable subagent <subagentId>
 
 这三个是给主模型用的 Tool Call。人类命令走上一节的斜杠入口，两者独立。`smart_command_manage` 仍然只写项目目录。
 
-## 设置页
+## Web 界面集成
+
+插件为 DeepSeek Harness Web GUI 提供了两处客户端扩展：
+
+### 1. 对话输入栏 Prompt 模板下拉菜单
+
+在对话输入框左侧工具栏（`conversation.input.left` 插槽，order 20）注入 Prompt 触发按钮：
+- **实时过滤与检索**：点击展开浮层，按名称、斜杠命令名、描述或标签实时搜索模板。
+- **键盘导航**：支持 `ArrowDown` / `ArrowUp` 切换高亮、`Enter` 选择、`Escape` 快速关闭。
+- **草稿智能插入**：选择模板后自动将对应斜杠命令（或提示词正文）插入输入框草稿区（已有草稿时换行追加），并自动聚焦回输入框。
+- **元数据标签**：清晰标明项目级/用户级来源，以及 subagent / chain 运行模式。
+
+### 2. 独立设置页
 
 Web 设置侧栏有独立的 **智能指令** 页（`settings.section` id `smart-commands`）。浏览器半侧走 `exports["./client"]` + `dsh.client`，通过 Host Remote 命名空间 `smartCommands` 管目录：
 
