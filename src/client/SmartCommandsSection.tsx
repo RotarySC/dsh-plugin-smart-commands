@@ -738,6 +738,20 @@ export function SmartCommandsSection(props: SmartCommandsSectionProps): ReactNod
                   onChange={event => { setQuery(event.target.value) }}
                 />
               </label>
+              <div className="sc-toolbar-actions">
+                <button type="button" className="sc-btn sc-btn-primary" disabled={busy || !api} onClick={openCreate}>{t('new')}</button>
+                <button type="button" className="sc-btn" disabled={busy || !api} onClick={openImport}>{t('import')}</button>
+                <button
+                  type="button"
+                  className="sc-btn"
+                  disabled={busy || !api || selectedVisible.length === 0}
+                  onClick={() => { void exportSelected() }}
+                >
+                  {t('export')}
+                </button>
+              </div>
+            </div>
+            <div className="sc-toolbar-row">
               <div className="sc-seg" role="group" aria-label={t('filterAll')}>
                 <button
                   type="button"
@@ -757,20 +771,6 @@ export function SmartCommandsSection(props: SmartCommandsSectionProps): ReactNod
                   {t('filterSubagent')}
                 </button>
               </div>
-              <div className="sc-toolbar-actions">
-                <button type="button" className="sc-btn sc-btn-primary" disabled={busy || !api} onClick={openCreate}>{t('new')}</button>
-                <button type="button" className="sc-btn" disabled={busy || !api} onClick={openImport}>{t('import')}</button>
-                <button
-                  type="button"
-                  className="sc-btn"
-                  disabled={busy || !api || selectedVisible.length === 0}
-                  onClick={() => { void exportSelected() }}
-                >
-                  {t('export')}
-                </button>
-              </div>
-            </div>
-            <div className="sc-toolbar-row">
               <button
                 type="button"
                 className="sc-link"
@@ -833,14 +833,37 @@ export function SmartCommandsSection(props: SmartCommandsSectionProps): ReactNod
           <div className="sc-toolbar">
             <div className="sc-toolbar-row">
               <label className="sc-search">
-                <span className="sc-visually-hidden">{t('search')}</span>
+                <span className="sc-visually-hidden">{t('searchKeywords')}</span>
                 <input
                   type="search"
                   value={query}
-                  placeholder={t('search')}
+                  placeholder={t('searchKeywords')}
                   onChange={event => { setQuery(event.target.value) }}
                 />
               </label>
+              <div className="sc-toolbar-actions">
+                <button type="button" className="sc-btn sc-btn-primary" disabled={busy || !api} onClick={openCreateCategory}>
+                  {t('new')}
+                </button>
+                <button
+                  type="button"
+                  className="sc-btn"
+                  disabled={busy || !api}
+                  onClick={() => setKeywordImporter({ origin: 'project', dragOver: false })}
+                >
+                  {t('import')}
+                </button>
+                <button
+                  type="button"
+                  className="sc-btn"
+                  disabled={busy || !api || visibleCategories.length === 0}
+                  onClick={exportKeywordsJson}
+                >
+                  {t('export')}
+                </button>
+              </div>
+            </div>
+            <div className="sc-toolbar-row">
               <div className="sc-seg" role="group" aria-label={t('filterAll')}>
                 <button
                   type="button"
@@ -867,27 +890,6 @@ export function SmartCommandsSection(props: SmartCommandsSectionProps): ReactNod
                   onClick={() => { setKeywordOriginFilter('user') }}
                 >
                   {t('originUser')}
-                </button>
-              </div>
-              <div className="sc-toolbar-actions">
-                <button type="button" className="sc-btn sc-btn-primary" disabled={busy || !api} onClick={openCreateCategory}>
-                  {t('addCategory')}
-                </button>
-                <button
-                  type="button"
-                  className="sc-btn"
-                  disabled={busy || !api}
-                  onClick={() => setKeywordImporter({ origin: 'project', dragOver: false })}
-                >
-                  {t('importKeywords')}
-                </button>
-                <button
-                  type="button"
-                  className="sc-btn"
-                  disabled={busy || !api || visibleCategories.length === 0}
-                  onClick={exportKeywordsJson}
-                >
-                  {t('exportKeywords')}
                 </button>
               </div>
             </div>
