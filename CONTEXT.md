@@ -12,6 +12,14 @@ _Avoid_: Template picker, prompt dropdown box, snippet toolbar
 A Markdown document with YAML frontmatter defining an executable prompt, subagent directive, or chain workflow.
 _Avoid_: Prompt file, command file, macro
 
+**Persona**:
+Per-child `deployment:persona` text that shadows the parent's deployment persona for one subagent run. Written as a non-boolean `subagent:` string (except the `continuable` token) or as a chain step `agent:`. The child still joins the parent session's agent-preset; Persona does not pick a composition.
+_Avoid_: agent-preset, preset, 子代理预设, 预设
+
+**Model spec**:
+One catalog token used by **template-level** `model:`: bare `id`, qualified `provider/id`, or `provider/*`. That field is a comma-separated fallback list resolved against every registered provider; when no spec matches, the run uses the current session model. A chain step `model:` is a single string passed through as `agentOptions.model` — no fallback list, no `provider/id` split.
+_Avoid_: session model picker, unqualified "the DeepSeek model"
+
 **Slash Command**:
 The registered slash prefix name (e.g. `/<slashName>`) representing a runnable template within a conversation.
 _Avoid_: Command alias, trigger keyword

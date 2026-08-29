@@ -25,6 +25,8 @@ export interface HostAgent {
   readonly id: string
   readonly options?: { provider?: string; model?: string }
   readonly sessionCwd?: string
+  /** The host-native agent object this adapter wraps (the real DSH Agent). Delegated child runs must receive it untouched — a duck-typed wrapper lacks `session`/`ctx` and breaks host-side delegation. */
+  readonly original?: unknown
   submit?(prompt: string, signal: AbortSignal): Promise<HostTurnResult>
 }
 

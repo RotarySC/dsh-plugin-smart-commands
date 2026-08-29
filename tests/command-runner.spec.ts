@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { CommandRunner } from '../src/engine/command-runner.ts'
 import { activateSmartCommands } from '../src/plugin.ts'
 import { TemplateLoader } from '../src/loader/template-loader.ts'
-import { DEFAULT_PLUGIN_CONFIG, type HostToolDefinition, type SmartCommandsHost } from '../src/types/host.ts'
+import { wrapDshSubagents } from '../src/host/dsh-adapter.ts'
+import { DEFAULT_PLUGIN_CONFIG, type HostAgent, type HostToolDefinition, type SmartCommandsHost } from '../src/types/host.ts'
 
 const simple = `---
 description: Review one file
@@ -280,6 +281,120 @@ Draft $@
       kind: 'success',
       text: 'child:Review src/auth.ts with src/auth.ts focus=types',
     })
+  })
+
+  it('submits in-session templates to the main agent via the DSH agent turn driver', async () => {
+    const { root } = await workspace()
+    const followed: Array<{ content?: unknown[] }> = []
+    const commands = new Map<string, {
+      name: string
+      handler: (invocation: { rawInput: string; signal: AbortSignal; agent?: HostAgent }) => Promise<{ kind: string; text: string }>
+    }>()
+    const activated = await activateSmartCommands({
+      workspaceRoot: root,
+      userHome: root,
+      config: {
+        ...DEFAULT_PLUGIN_CONFIG,
+        userTemplatesDir: join(root, 'user'),
+        projectTemplatesDir: 'project',
+      },
+      modelRegistry: {
+        current: { id: 'deepseek-chat' },
+        available: [{ id: 'deepseek-chat' }],
+      },
+      commands: {
+        register(definition) {
+          commands.set(definition.name, definition)
+          return () => { commands.delete(definition.name) }
+        },
+      },
+    })
+    disposers.push(() => activated.dispose())
+    const created = await activated.runner.manage({
+      action: 'create',
+      name: 'draft',
+      content: `---
+description: Draft in the current session
+---
+Draft $@
+`,
+    })
+    expect(created.ok).toBe(true)
+
+    // The DSH Agent shape handed to command handlers: no `submit`, only the
+    // inbox turn driver. The plugin must adapt it, or the template prompt
+    // never reaches the main agent (silent echo bug).
+    const dshAgent = {
+      id: 'session-1',
+      options: { provider: 'deepseek', model: 'deepseek-chat' },
+      followup: (message: { content?: unknown[] }) => { followed.push(message) },
+    }
+    const result = await commands.get('draft')!.handler({
+      rawInput: 'auth.ts',
+      signal: new AbortController().signal,
+      agent: dshAgent as unknown as HostAgent,
+    })
+    expect(result.kind).toBe('success')
+    // The command settles immediately (fire-and-forget) so the composer never
+    // locks on the slash claim; the model reply streams as an assistant message.
+    expect(result.text).toBe('')
+    expect(followed).toHaveLength(1)
+    expect(followed[0]?.content).toEqual([{ type: 'text', text: 'Draft auth.ts' }])
+  })
+
+  it('forwards the original DSH agent to subagent delegation, not the adapted wrapper', async () => {
+    const { root } = await workspace()
+    const started: Array<{ parent: unknown }> = []
+    const commands = new Map<string, {
+      name: string
+      handler: (invocation: { rawInput: string; signal: AbortSignal; agent?: HostAgent }) => Promise<{ kind: string; text: string }>
+    }>()
+    const activated = await activateSmartCommands({
+      workspaceRoot: root,
+      userHome: root,
+      config: {
+        ...DEFAULT_PLUGIN_CONFIG,
+        userTemplatesDir: join(root, 'user'),
+        projectTemplatesDir: 'project',
+      },
+      modelRegistry: {
+        current: { id: 'deepseek-chat' },
+        available: [{ id: 'deepseek-reasoner' }],
+      },
+      // DSH-shaped two-argument subagents service (would crash reading
+      // parent.session.header if the adapter wrapper leaked through).
+      subagents: wrapDshSubagents({
+        list: () => ['spawn'],
+        start: async (_name, request) => {
+          started.push({ parent: request.parent })
+          return {
+            result: Promise.resolve({ output: [{ type: 'text', text: 'child-ok' }], stopReason: 'completed' }),
+          }
+        },
+      }),
+      commands: {
+        register(definition) {
+          commands.set(definition.name, definition)
+          return () => { commands.delete(definition.name) }
+        },
+      },
+    })
+    disposers.push(() => activated.dispose())
+    const dshAgent = {
+      id: 'session-1',
+      session: { header: { id: 'session-1' } },
+      ctx: {},
+      options: { provider: 'deepseek', model: 'deepseek-chat' },
+      followup: () => {},
+    }
+    const result = await commands.get('review')!.handler({
+      rawInput: 'auth.ts',
+      signal: new AbortController().signal,
+      agent: dshAgent as unknown as HostAgent,
+    })
+    expect(result.kind).toBe('success')
+    expect(result.text).toBe('child-ok')
+    expect(started[0]?.parent).toBe(dshAgent)
   })
 
   it('registers and unregisters direct slash commands when templates change', async () => {

@@ -56,7 +56,7 @@ chain:
 
   it('accepts the shipped example templates', async () => {
     const examplesDir = fileURLToPath(new URL('../examples', import.meta.url))
-    for (const name of ['refactor-module.md', 'code-review.md', 'vuln-scan-and-fix.md', 'continuable-chat.md']) {
+    for (const name of ['refactor-module.md', 'code-review.md', 'vuln-scan-and-fix.md', 'continuable-chat.md', 'persona-review.md']) {
       const content = await readFile(join(examplesDir, name), 'utf8')
       expect(() => parseTemplateDocument(content)).not.toThrow()
     }

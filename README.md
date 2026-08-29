@@ -74,9 +74,9 @@ DSH 宿主只接受 `/[a-z][a-z0-9_-]*`。模板文件名会先映射再注册�
 | 字段 | 默认 | 语义 |
 | --- | --- | --- |
 | `description` | 必填 | 列表与模型可见说明 |
-| `model` | 当前会话模型 | 逗号分隔回退链 |
+| `model` | 当前会话模型 | 逗号分隔回退链：`id`、`provider/id`、`provider/*`，见下方「`model:` 合格名与回退链」 |
 | `restore` | `true` | 无子代理且切换了父会话模型时，执行后还原 |
-| `subagent` | `false` | 见下方「谁来执行」 |
+| `subagent` | `false` | `false` / `true` / `continuable` / Persona 字符串，见下方「Persona」 |
 | `continuable` | `false` | `true` 时走可续聊子代理 |
 | `context` | `fresh` | `fresh` → `spawn`，`fork` → `fork` |
 | `tools` | 全部允许 | `{ allow?, deny? }` |
@@ -90,15 +90,28 @@ DSH 宿主只接受 `/[a-z][a-z0-9_-]*`。模板文件名会先映射再注册�
 
 Chain 占位符：`{task}`、`{previous}`、`{outputs.name}`。`as` 必须全局唯一，且只能引用更早步骤的输出。
 
-示例见 `examples/`。把文件复制到 `.dsh/commands/` 或 `~/.dsh/commands/` 即可使用。
+示例见 `examples/`（Persona + 合格名回退链：`examples/persona-review.md`）。把文件复制到 `.dsh/commands/` 或 `~/.dsh/commands/` 即可使用。
 
-### 谁来执行
+### Persona（人设，不是 agent-preset）
 
-| `subagent` / `continuable` | 谁跑 | 后续消息 |
-| --- | --- | --- |
-| 不写 / `false` | 当前这次对话 | — |
-| `true` 或 persona 字符串 | 一次性子代理（`ctx.subagents.start()`，跑完 dispose） | 不支持 |
-| `subagent: continuable` 或 `continuable: true` | 可续聊子代理（`startContinuable()`） | 用宿主 `send_message` 发给返回的 `subagentId` |
+`subagent` 一个字段同时决定**谁来执行**和可选的 **Persona**。Persona 是 DSH 子代理的 `persona`：给这一次子代理盖一层 `deployment:persona` 人设。它**不是** agent-preset（`standard` / `code` / 用户复制的组装 id）。进程内子代理仍 **join 父会话的 agent-preset**，因此工具集、插件与提示词跟父会话同一套；Persona 只阴影人设。
+
+| `subagent` / `continuable` | 谁跑 | Persona | 后续消息 |
+| --- | --- | --- | --- |
+| 不写 / `false` | 当前这次对话（渲染后的提示以用户消息投递，命令立即返回） | 无 | — |
+| `true` | 一次性子代理（`ctx.subagents.start()`，跑完 dispose） | 无 | 不支持 |
+| 其它非空字符串（除 `continuable`） | 同上，一次性子代理 | 该字符串 → `start(..., { persona })` | 不支持 |
+| `subagent: continuable` 或 `continuable: true` | 可续聊子代理（`startContinuable()`） | 无（除非另写非 `continuable` 的字符串并配合 `continuable: true`） | 用宿主 `send_message` 发给返回的 `subagentId` |
+
+```yaml
+description: 以 reviewer Persona 做一次性审查
+subagent: reviewer
+model: deepseek/deepseek-reasoner, deepseek/deepseek-chat
+```
+
+Chain 步骤的 `agent:` 与模板级 Persona **同一语义**（`examples/vuln-scan-and-fix.md` 里的 `agent: scout` 就是 Persona，不是 provider 名，也不是 agent-preset）。
+
+会话内执行通过宿主 Agent 的 `followup()` 把模板提示作为一条用户消息投递进会话历史并唤醒主代理回合，命令随即返回（不等待回合结束——等待会让输入框停留在命令声明态并锁死，模型回复以普通助手消息流式显示）。因此后续补充（如「继续」「按方案执行」）会与模板内容同处于模型上下文中。
 
 可续聊示例：`examples/continuable-chat.md`。`/command` 只负责**启动**子代理，返回类似：
 
@@ -108,17 +121,51 @@ started continuable subagent <subagentId>
 
 之后不要再跑一遍 `/command`。用 DSH 自带的 `send_message` 把后续内容发给这个 id。宿主若没有 `startContinuable`，命令会明确报错，不会静默退化成一次性。
 
-`context` 只决定 spawn / fork，不决定一次性还是可续聊。
+`context` 只决定 spawn / fork，不决定一次性还是可续聊，也不选择 Persona 或 agent-preset。
 
-### 模型怎么选
+### `model:` 合格名与回退链
 
-`model:` 按从左到右匹配**所有已注册 provider**（`listProviders` + 各 provider 的 `listModels`），不限于当前会话正在用的那一家。
+模板级 `model:` 是**逗号分隔的回退链**，按从左到右匹配**所有已注册 provider**（`listProviders` + 各 provider 的 `listModels`），不限于当前会话正在用的那一家。每一段是一个 **model spec**：
+
+| spec | 匹配 |
+| --- | --- |
+| `deepseek-chat` | 任意供应商上 id 等于该值的模型（同名时取清单里第一个） |
+| `deepseek/deepseek-chat` | 指定供应商 + 模型 id |
+| `deepseek/*` | 该供应商下任意已列出的模型 |
+
+规则：
 
 1. 模板没写 `model` → 用当前会话模型（`agent-default-model.provider/model`）。
-2. 写了候选链 → 匹配 `provider/id`、裸 id、当前会话模型。
-3. 跨 provider 都找不到 → **回退当前会话模型**，不再把模板里的无效 id 硬塞给 LLM。
+2. 写了候选链 → 依次匹配 `provider/id`、裸 id、`provider/*`。
+3. 跨 provider 都找不到 → **回退当前会话模型**。这是有意行为：不会把模板里的无效 id 硬塞给 LLM，命令也不会因此失败。要钉死某一家供应商，写 `provider/id`，并确保该 provider 已注册。
 
-子代理启动时会同时传 `provider` 和 `model`。有 `subagent` 时，模型给子代理用，默认不改父会话正在聊的模型。
+```yaml
+model: deepseek/deepseek-reasoner, deepseek/deepseek-chat
+```
+
+子代理启动时会同时传 `provider` 和 `model`。有 `subagent` 或 `chain` 时，选中的模型给子代理用，默认不改父会话正在聊的模型。
+
+Chain **步骤**上的 `model:` 是**单个字符串**，原样进入子代理的 `agentOptions.model`：没有逗号回退，也不会拆成 `provider` + `id`。要按供应商回退，写在**模板级** `model:`。
+
+```yaml
+chain:
+  - name: security_scan
+    agent: scout                 # Persona
+    model: deepseek-chat         # 单段，原样传递
+    task: "全面扫描与 $1 相关的问题"
+    as: vulnerabilities
+```
+
+`<if-model is="deepseek-reasoner, deepseek/*">` 按**已经选中的**模型（含 provider）匹配，写法与 spec 相同。
+
+### 常见误解
+
+| 说法 | 实际 |
+| --- | --- |
+| 「子代理预设 / 预设」 | 本插件里能选的是 **Persona**（`subagent: reviewer` / `agent: scout`）。DSH **agent-preset** 由父会话决定，模板不能换一套组装。 |
+| `model: deepseek-chat` | 裸 id 会在**所有**已注册供应商里找同名模型，不一定是 DeepSeek 那一家。钉供应商请写 `deepseek/deepseek-chat`。 |
+| 写了 `cpa/gemini-...` 却跑到会话模型 | 清单里没有任何候选命中时**有意回退**当前会话模型，不是解析失败。 |
+| 在 chain 步骤写 `model: a, b` 或 `provider/id` | 步骤 `model:` 整段原样当作 `agentOptions.model`，没有逗号回退，也不拆供应商。回退链和 `provider/id` 解析只属于模板级 `model:`。 |
 
 ## 工具
 
@@ -178,6 +225,6 @@ npm run typecheck
 - 工具裁剪依赖宿主 `ctx.subagents` 的 `toolFilter` 能力；本插件不自行调用 `tools.restrict()`。
 - `delegationDepth` 由宿主子代理 seam 在 `start(..., { maxDepth })` 上强制；本插件拒绝超过配置上限的本层再委托。
 - `fork` 只选择 fork provider，父会话快照由该 provider 读取。
-- 模型清单来自宿主 `listProviders` / `listModels`，不做在线鉴权探测。
+- 模型清单来自宿主 `listProviders` / `listModels`，不做在线鉴权探测。模板级 `model:` 候选全都不在清单里时**有意回退**当前会话模型（不是解析失败，也不会把不合格名硬塞给 LLM）；要钉死供应商请写 `provider/id`。
 - 可续聊子代理的后续消息由宿主 `send_message` 投递，本插件不提供自己的 follow-up 命令。
 - 尚无挂到真实 DSH 组合上的 E2E。

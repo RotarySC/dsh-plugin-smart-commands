@@ -1,4 +1,5 @@
-import type { HostAgent, HostLlm, HostSubagents, ModelRef, ModelRegistry, ModelSession, SubagentRunResult } from '../types/host.js'
+import { randomUUID } from 'node:crypto'
+import type { HostAgent, HostLlm, HostSubagents, HostTurnResult, ModelRef, ModelRegistry, ModelSession, SubagentRunResult } from '../types/host.js'
 import { parseModelRef } from '../engine/model-router.js'
 
 interface DshContentBlock {
@@ -39,7 +40,10 @@ function toDshStartBody(request: Parameters<HostSubagents['start']>[0]): Record<
   return {
     prompt: [{ type: 'text', text: request.prompt }],
     label: request.label,
-    ...request.parent ? { parent: request.parent } : {},
+    // DSH delegation reads the parent's session/ctx/options — a duck-typed
+    // HostAgent wrapper (from asHostAgent) would crash with "Cannot read
+    // properties of undefined (reading 'header')". Forward the original agent.
+    ...request.parent ? { parent: request.parent.original ?? request.parent } : {},
     ...request.agentOptions ? { agentOptions: request.agentOptions } : {},
     ...request.persona ? { persona: request.persona } : {},
     ...request.toolFilter ? { toolFilter: request.toolFilter } : {},
@@ -97,6 +101,66 @@ export function asHostSubagents(raw: unknown): HostSubagents | undefined {
     return wrapDshSubagents(service as DshSubagentService)
   }
   return service as HostSubagents
+}
+
+/**
+ * Duck-typed DSH `Agent` (from `@deepseek-ai/dsh-agent`): the object handed to
+ * command handlers as `invocation.agent`. Its turn-driving surface is
+ * `followup(message)` — queue a model-visible user message and wake the agent
+ * loop. There is no `submit` on the real agent; this adapter is what makes
+ * in-session template runs reach the main agent at all.
+ */
+interface DshAgentLike {
+  readonly id?: unknown
+  readonly options?: { provider?: string; model?: string }
+  followup?(message: unknown): void
+}
+
+/**
+ * Queue `prompt` as one model-visible user message and return immediately.
+ * Deliberately does NOT `await whenIdle()`: the composer keeps the slash-claim
+ * in the input and locks editing for the whole `commands.execute` transaction,
+ * so a handler that blocks on the full LLM turn leaves a ghost command and a
+ * dead input until the turn ends. The model reply streams below as an ordinary
+ * assistant message; the `text` of a fire-and-forget submission is empty.
+ */
+async function submitMainAgentTurn(agent: DshAgentLike, prompt: string): Promise<HostTurnResult> {
+  agent.followup!({
+    id: randomUUID(),
+    role: 'user',
+    content: [{ type: 'text', text: prompt }],
+    source: { kind: 'user' },
+  })
+  return { text: '' }
+}
+
+/**
+ * Adapt a DSH `Agent` (as received on `invocation.agent` / `exec.agent`) into
+ * the plugin's {@link HostAgent}. `submit` is only attached when the agent can
+ * actually queue turn input (`followup`); hosts that only echo the rendered
+ * prompt to the caller (model-facing `smart_command_run`) must keep passing the
+ * raw agent so `submit` stays absent — submitting into the caller's own running
+ * turn would deadlock the loop.
+ */
+export function asHostAgent(raw: unknown): HostAgent | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const agent = raw as DshAgentLike
+  if (typeof agent.id !== 'string' || !agent.id) return undefined
+  return {
+    id: agent.id,
+    original: raw,
+    ...agent.options?.provider && agent.options.model
+      ? { options: { provider: agent.options.provider, model: agent.options.model } }
+      : {},
+    ...typeof agent.followup === 'function'
+      ? {
+          submit: (prompt: string, signal: AbortSignal) => {
+            if (signal.aborted) return Promise.reject(new Error('Operation cancelled by user'))
+            return submitMainAgentTurn(agent, prompt)
+          },
+        }
+      : {},
+  }
 }
 
 function listedModelRefs(list: unknown): Array<{ id: string; provider?: string }> {

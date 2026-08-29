@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { DEFAULT_PLUGIN_CONFIG, type HostAgent, type PluginConfig, type SmartCommandsHost } from './types/host.js'
+import { asHostAgent } from './host/dsh-adapter.js'
 import { CommandRunner } from './engine/command-runner.js'
 import { slashCommandNameFor } from './engine/slash-name.js'
 import { extractTemplateSlots, parseCommandArgs } from './engine/template-engine.js'
@@ -141,7 +142,7 @@ export function registerTemplateSlashCommands(
               template.name,
               invocation.rawInput,
               invocation.signal,
-              invocation.agent,
+              asHostAgent(invocation.agent),
             )
           },
         })

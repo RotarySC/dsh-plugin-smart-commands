@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asHostSubagents, loadAvailableModels, modelRegistryFromContext, modelSessionFromConfiguration, wrapDshSubagents } from '../src/host/dsh-adapter.ts'
+import { asHostAgent, asHostSubagents, loadAvailableModels, modelRegistryFromContext, modelSessionFromConfiguration, wrapDshSubagents } from '../src/host/dsh-adapter.ts'
 import { getByPointer, JsonPointerError } from '../src/utils/json-pointer.ts'
 
 describe('DSH subagent adapter', () => {
@@ -60,6 +60,78 @@ describe('DSH subagent adapter', () => {
       signal: new AbortController().signal,
     })
     expect(started).toEqual({ childId: 'child-of-spawn', messageId: 'msg-1' })
+  })
+
+  it('forwards the original agent to DSH delegation, not the adapter wrapper', async () => {
+    const seen: Array<{ parent: unknown }> = []
+    const wrapped = wrapDshSubagents({
+      start: async (_name, request) => {
+        seen.push({ parent: request.parent })
+        return {
+          result: Promise.resolve({ output: [{ type: 'text', text: 'ok' }], stopReason: 'completed' }),
+        }
+      },
+    })
+    // DSH delegation reads parent.session.header / parent.ctx — a duck wrapper
+    // without them crashes with "Cannot read properties of undefined (reading
+    // 'header')". The adapter must unwrap to the original agent.
+    const dshAgent = {
+      id: 'session-1',
+      session: { header: { id: 'session-1' } },
+      ctx: {},
+      options: { provider: 'p', model: 'm' },
+      followup: () => {},
+    }
+    const adapted = asHostAgent(dshAgent)!
+    await wrapped.start({
+      provider: 'spawn',
+      prompt: 'go',
+      label: 'child',
+      parent: adapted,
+      signal: new AbortController().signal,
+    })
+    expect(seen[0]?.parent).toBe(dshAgent)
+  })
+})
+
+describe('DSH agent adapter', () => {
+  it('wraps a DSH agent with an in-session submit that follows up the main turn', async () => {
+    const followed: unknown[] = []
+    const dshAgent = {
+      id: 'session-1',
+      options: { provider: 'deepseek', model: 'deepseek-chat' },
+      followup: (message: unknown) => { followed.push(message) },
+    }
+
+    const agent = asHostAgent(dshAgent)
+    expect(agent?.id).toBe('session-1')
+    expect(agent?.options).toEqual({ provider: 'deepseek', model: 'deepseek-chat' })
+    expect(agent?.original).toBe(dshAgent)
+
+    const result = await agent?.submit?.('Draft auth.ts', new AbortController().signal)
+    // Fire-and-forget: the command settles immediately so the composer does not
+    // stay locked on the slash claim while the main-agent turn runs.
+    expect(result?.text).toBe('')
+    expect(followed).toHaveLength(1)
+    const message = followed[0] as { id: string; role: string; content: unknown[]; source: { kind: string } }
+    expect(message.role).toBe('user')
+    expect(message.source.kind).toBe('user')
+    expect(message.content).toEqual([{ type: 'text', text: 'Draft auth.ts' }])
+    expect(typeof message.id).toBe('string')
+  })
+
+  it('omits submit when the agent cannot drive turns', () => {
+    const agent = asHostAgent({ id: 'session-1', options: { provider: 'p', model: 'm' } })
+    expect(agent?.id).toBe('session-1')
+    expect(agent?.options).toEqual({ provider: 'p', model: 'm' })
+    expect(agent?.submit).toBeUndefined()
+  })
+
+  it('returns undefined for non-agent values', () => {
+    expect(asHostAgent(undefined)).toBeUndefined()
+    expect(asHostAgent(null)).toBeUndefined()
+    expect(asHostAgent({})).toBeUndefined()
+    expect(asHostAgent({ followup: () => {} })).toBeUndefined()
   })
 })
 
