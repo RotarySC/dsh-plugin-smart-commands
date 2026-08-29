@@ -7,6 +7,8 @@ export const SMART_COMMANDS_ENDPOINTS = [
   { method: 'write', request: 'TemplateWriteRequest', result: 'CatalogMutationResult' },
   { method: 'deleteTemplate', request: 'TemplateIdentity', result: 'CatalogMutationResult' },
   { method: 'copy', request: 'TemplateCopyRequest', result: 'CatalogMutationResult' },
+  { method: 'listKeywords', request: 'CatalogScope', result: 'KeywordInventory' },
+  { method: 'writeKeywords', request: 'KeywordWriteRequest', result: 'KeywordMutationResult' },
 ] as const
 
 export type SmartCommandsSchemaName =
@@ -17,6 +19,10 @@ export type SmartCommandsSchemaName =
   | 'TemplateInventory'
   | 'TemplateDocument'
   | 'CatalogMutationResult'
+  | 'KeywordCategory'
+  | 'KeywordInventory'
+  | 'KeywordWriteRequest'
+  | 'KeywordMutationResult'
 
 export interface SchemaLike<Output = unknown> {
   parse(value: unknown): Output

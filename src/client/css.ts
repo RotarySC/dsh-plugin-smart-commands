@@ -59,6 +59,18 @@ export const SECTION_CSS = `
 .sc-file-name{flex:1;min-width:0;font-size:13px;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sc-file-size{flex:none;font-size:12px;color:var(--dsw-alias-label-tertiary)}
 .sc-visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.sc-top-tabs{display:inline-flex;align-items:center;border-bottom:2px solid var(--dsw-alias-border-l2);gap:16px;margin-bottom:8px;width:100%}
+.sc-top-tab-btn{border:none;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:14px;font-weight:600;padding:8px 4px;cursor:pointer;position:relative;transition:all .15s ease}
+.sc-top-tab-btn:hover{color:var(--dsw-alias-label-primary)}
+.sc-top-tab-btn[data-active=true]{color:var(--dsw-alias-state-business-primary)}
+.sc-top-tab-btn[data-active=true]::after{content:"";position:absolute;bottom:-2px;left:0;right:0;height:2px;background:var(--dsw-alias-state-business-primary);border-radius:2px}
+.sc-category-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.sc-category-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.sc-category-title-wrap{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.sc-category-name{margin:0;font-size:14px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-category-desc{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px}
+.sc-keyword-tags-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.sc-keyword-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
 @media (max-width:640px){
   .sc-row-head{flex-wrap:wrap}
   .sc-row-actions{width:100%;justify-content:flex-end}

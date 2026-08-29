@@ -2,6 +2,11 @@ import { bindSmartCommandsDescriptors, SMART_COMMANDS_PACKAGE } from './remote/c
 import {
   catalogMutationResultSchema,
   catalogScopeSchema,
+  inventoryKeywordCategorySchema,
+  keywordCategorySchema,
+  keywordInventorySchema,
+  keywordMutationResultSchema,
+  keywordWriteRequestSchema,
   templateCopyRequestSchema,
   templateDocumentSchema,
   templateIdentitySchema,
@@ -17,6 +22,10 @@ const schemas = {
   TemplateInventory: templateInventorySchema,
   TemplateDocument: templateDocumentSchema,
   CatalogMutationResult: catalogMutationResultSchema,
+  KeywordCategory: keywordCategorySchema,
+  KeywordInventory: keywordInventorySchema,
+  KeywordWriteRequest: keywordWriteRequestSchema,
+  KeywordMutationResult: keywordMutationResultSchema,
 }
 
 export const TYPERT = {

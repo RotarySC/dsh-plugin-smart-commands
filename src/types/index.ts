@@ -20,6 +20,16 @@ export type {
 } from './catalog.js'
 
 export type {
+  InventoryKeywordCategory,
+  KeywordCategory,
+  KeywordDocument,
+  KeywordInventory,
+  KeywordInventoryError,
+  KeywordMutationResult,
+  KeywordWriteRequest,
+} from './keywords.js'
+
+export type {
   CommandTemplate,
   RuntimeOverrides,
   TemplateFrontmatter,

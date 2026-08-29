@@ -133,6 +133,56 @@ function parseMutation(value: unknown) {
   }
 }
 
+function parseKeywordCategory(value: unknown, path: string): Record<string, unknown> {
+  const record = asObject(value, path)
+  const description = record.description
+  const sourceLabel = record.sourceLabel
+  const origin = record.origin
+  return {
+    id: asString(record.id, `${path}.id`),
+    name: asString(record.name, `${path}.name`),
+    ...typeof description === 'string' ? { description } : {},
+    keywords: asStringArray(record.keywords, `${path}.keywords`),
+    ...origin === 'user' || origin === 'project' ? { origin } : {},
+    ...typeof sourceLabel === 'string' ? { sourceLabel } : {},
+  }
+}
+
+function parseKeywordInventory(value: unknown) {
+  const record = asObject(value, 'result')
+  if (!Array.isArray(record.categories)) fail('keyword inventory shape is invalid')
+  const errors = Array.isArray(record.errors) ? record.errors : []
+  return {
+    categories: record.categories.map((item, index) => parseKeywordCategory(item, `categories[${index}]`)),
+    errors: errors.map((item, index) => {
+      const error = asObject(item, `errors[${index}]`)
+      return {
+        origin: asOrigin(error.origin, `errors[${index}].origin`),
+        error: asString(error.error, `errors[${index}].error`),
+      }
+    }),
+  }
+}
+
+function parseKeywordWrite(value: unknown) {
+  const record = asObject(value, 'request')
+  if (!Array.isArray(record.categories)) fail('categories must be an array')
+  return {
+    origin: asOrigin(record.origin, 'request.origin'),
+    categories: record.categories.map((cat, idx) => parseKeywordCategory(cat, `request.categories[${idx}]`)),
+    ...optionalWorkspaceRoot(record),
+  }
+}
+
+function parseKeywordMutation(value: unknown) {
+  const record = asObject(value, 'result')
+  return {
+    ok: asBoolean(record.ok, 'result.ok'),
+    ...record.origin === 'user' || record.origin === 'project' ? { origin: record.origin } : {},
+    ...typeof record.error === 'string' ? { error: record.error } : {},
+  }
+}
+
 function schema<T>(parse: (value: unknown) => T): { parse(value: unknown): T } {
   return { parse }
 }
@@ -147,5 +197,9 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
     TemplateInventory: schema(parseInventory),
     TemplateDocument: schema(parseDocument),
     CatalogMutationResult: schema(parseMutation),
+    KeywordCategory: schema(val => parseKeywordCategory(val, 'KeywordCategory')),
+    KeywordInventory: schema(parseKeywordInventory),
+    KeywordWriteRequest: schema(parseKeywordWrite),
+    KeywordMutationResult: schema(parseKeywordMutation),
   }),
 }

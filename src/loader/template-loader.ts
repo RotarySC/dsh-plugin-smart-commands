@@ -257,6 +257,10 @@ export class TemplateLoader {
     void this.reload()
   }
 
+  get directories(): TemplateDirectories {
+    return this.dirs
+  }
+
   get catalog(): LoadedTemplateCatalog {
     return this.cache
   }

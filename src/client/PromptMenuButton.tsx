@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { InventoryTemplate, TemplateInventory } from '../types/catalog.js'
+import type { InventoryKeywordCategory, KeywordInventory } from '../types/keywords.js'
 import { filterInventory } from '../catalog-query.js'
 import { getActiveSmartCommandsConnect } from './connect.js'
 import type { SmartCommandsLocaleKey } from './locales.js'
 import type { SmartCommandsRemote } from './SmartCommandsSection.js'
 import { PROMPT_MENU_CSS } from './prompt-menu.css.js'
-import { ChevronDownIcon, PromptNerdIcon } from './icons.js'
+import { ChevronDownIcon, PromptNerdIcon, TagIcon } from './icons.js'
 import { formatTemplateDraft } from './draft-format.js'
 
 const MENU_STYLE_ID = '@deepseek-ai/dsh-plugin-smart-commands/prompt-menu.css'
@@ -34,7 +35,13 @@ interface InventoryCacheEntry {
   timestamp: number
 }
 
+interface KeywordCacheEntry {
+  inventory: KeywordInventory
+  timestamp: number
+}
+
 const inventoryCache = new Map<string, InventoryCacheEntry>()
+const keywordCache = new Map<string, KeywordCacheEntry>()
 const CACHE_TTL_MS = 5000
 
 function ensureMenuStyles(): void {
@@ -47,13 +54,18 @@ function ensureMenuStyles(): void {
   document.head.appendChild(tag)
 }
 
+type MenuActiveTab = 'prompts' | 'keywords'
+
 export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
   const { t, api, connect, workspaceRoot, inputActions, ownerProps, input } = props
   ensureMenuStyles()
 
   const [isOpen, setIsOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<MenuActiveTab>('prompts')
   const [query, setQuery] = useState('')
   const [templates, setTemplates] = useState<InventoryTemplate[]>([])
+  const [categories, setCategories] = useState<InventoryKeywordCategory[]>([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all')
   const [loading, setLoading] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null)
@@ -104,6 +116,40 @@ export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
     }
   }, [resolveApi, workspaceRoot])
 
+  const fetchKeywords = useCallback(async () => {
+    const ws = workspaceRoot?.()
+    const cacheKey = ws || '__global__'
+    const cached = keywordCache.get(cacheKey)
+
+    if (cached) {
+      setCategories(cached.inventory.categories)
+      if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        return
+      }
+    } else {
+      setLoading(true)
+    }
+
+    try {
+      const client = await resolveApi()
+      if (!client || typeof client.listKeywords !== 'function') {
+        if (!cached) setCategories([])
+        return
+      }
+      const res = await client.listKeywords({ workspaceRoot: ws })
+      if (res.ok) {
+        keywordCache.set(cacheKey, { inventory: res.value, timestamp: Date.now() })
+        setCategories(res.value.categories)
+      } else if (!cached) {
+        setCategories([])
+      }
+    } catch {
+      if (!cached) setCategories([])
+    } finally {
+      setLoading(false)
+    }
+  }, [resolveApi, workspaceRoot])
+
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
@@ -131,10 +177,11 @@ export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
         setQuery('')
         setHighlightedIndex(0)
         fetchInventory()
+        fetchKeywords()
       }
       return next
     })
-  }, [fetchInventory])
+  }, [fetchInventory, fetchKeywords])
 
   useLayoutEffect(() => {
     if (isOpen) {
@@ -176,9 +223,26 @@ export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
     return filterInventory(templates, query, 'all')
   }, [templates, query])
 
+  const visibleKeywords = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    let pool: string[] = []
+    if (selectedCategoryId === 'all') {
+      const set = new Set<string>()
+      for (const cat of categories) {
+        for (const kw of cat.keywords) set.add(kw)
+      }
+      pool = [...set]
+    } else {
+      const found = categories.find(c => c.id === selectedCategoryId)
+      pool = found ? [...found.keywords] : []
+    }
+    if (!q) return pool
+    return pool.filter(k => k.toLowerCase().includes(q))
+  }, [categories, selectedCategoryId, query])
+
   useEffect(() => {
     setHighlightedIndex(0)
-  }, [query])
+  }, [query, activeTab])
 
   const restoreFocusToComposer = useCallback(() => {
     if (typeof document === 'undefined') return
@@ -200,6 +264,24 @@ export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
     setTimeout(restoreFocusToComposer, 0)
   }, [input, ownerProps, inputActions, restoreFocusToComposer])
 
+  const handleSelectKeyword = useCallback((keyword: string) => {
+    const currentDraft = input?.text ?? ownerProps?.input?.text ?? (typeof document !== 'undefined' ? document.querySelector('textarea')?.value ?? '' : '')
+    const trimmed = currentDraft.trimEnd()
+    const nextDraft = trimmed.length > 0 ? `${trimmed} ${keyword} ` : `${keyword} `
+
+    if (inputActions?.setDraft) {
+      inputActions.setDraft(nextDraft)
+    } else if (typeof document !== 'undefined') {
+      const textarea = document.querySelector('textarea')
+      if (textarea) {
+        textarea.value = nextDraft
+        textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }
+    // Keep popover open to allow continuous clicking
+    searchInputRef.current?.focus()
+  }, [input, ownerProps, inputActions])
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -208,24 +290,26 @@ export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
       return
     }
 
-    if (filteredTemplates.length === 0) return
+    if (activeTab === 'prompts') {
+      if (filteredTemplates.length === 0) return
 
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setHighlightedIndex(idx => (idx + 1) % filteredTemplates.length)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setHighlightedIndex(idx => (idx - 1 + filteredTemplates.length) % filteredTemplates.length)
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      const selected = filteredTemplates[highlightedIndex]
-      if (selected) {
-        handleSelectTemplate(selected)
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setHighlightedIndex(idx => (idx + 1) % filteredTemplates.length)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setHighlightedIndex(idx => (idx - 1 + filteredTemplates.length) % filteredTemplates.length)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        const selected = filteredTemplates[highlightedIndex]
+        if (selected) {
+          handleSelectTemplate(selected)
+        }
       }
     }
-  }, [filteredTemplates, highlightedIndex, handleSelectTemplate, restoreFocusToComposer])
+  }, [activeTab, filteredTemplates, highlightedIndex, handleSelectTemplate, restoreFocusToComposer])
 
-  const activeOptionId = filteredTemplates[highlightedIndex]
+  const activeOptionId = activeTab === 'prompts' && filteredTemplates[highlightedIndex]
     ? `prompt-opt-${filteredTemplates[highlightedIndex]?.origin}-${filteredTemplates[highlightedIndex]?.name}`
     : undefined
 
@@ -268,73 +352,163 @@ export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
                 role="combobox"
                 aria-autocomplete="list"
                 aria-expanded={isOpen}
-                aria-controls="sc-prompt-listbox"
+                aria-controls={activeTab === 'prompts' ? 'sc-prompt-listbox' : undefined}
                 aria-activedescendant={activeOptionId}
                 className="sc-prompt-search-input"
                 placeholder={t('searchPlaceholder')}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
               />
+
+              <div className="sc-prompt-tabs-switch" role="tablist">
+                <button
+                  type="button"
+                  className="sc-prompt-tab-icon-btn"
+                  data-active={activeTab === 'prompts'}
+                  onClick={() => {
+                    setActiveTab('prompts')
+                    searchInputRef.current?.focus()
+                  }}
+                  title={t('tabPrompts')}
+                  role="tab"
+                  aria-selected={activeTab === 'prompts'}
+                >
+                  <PromptNerdIcon />
+                </button>
+                <button
+                  type="button"
+                  className="sc-prompt-tab-icon-btn"
+                  data-active={activeTab === 'keywords'}
+                  onClick={() => {
+                    setActiveTab('keywords')
+                    fetchKeywords()
+                    searchInputRef.current?.focus()
+                  }}
+                  title={t('tabKeywords')}
+                  role="tab"
+                  aria-selected={activeTab === 'keywords'}
+                >
+                  <TagIcon />
+                </button>
+              </div>
             </div>
 
-            <div id="sc-prompt-listbox" className="sc-prompt-list" role="listbox">
-              {loading ? (
-                <div className="sc-prompt-status-view">{t('loadingTemplates')}</div>
-              ) : filteredTemplates.length === 0 ? (
-                <div className="sc-prompt-status-view">
-                  {templates.length === 0 ? t('empty') : t('noMatchingTemplates')}
-                </div>
-              ) : (
-                filteredTemplates.map((item, index) => {
-                  const isHighlighted = index === highlightedIndex
-                  const optionId = `prompt-opt-${item.origin}-${item.name}`
-                  return (
-                    <div
-                      id={optionId}
-                      key={`${item.origin}:${item.name}`}
-                      className="sc-prompt-item"
-                      data-highlighted={isHighlighted}
-                      role="option"
-                      aria-selected={isHighlighted}
-                      onClick={() => handleSelectTemplate(item)}
-                      onMouseEnter={() => setHighlightedIndex(index)}
-                    >
-                      <div className="sc-prompt-item-main">
-                        <div className="sc-prompt-item-header">
-                          <span className="sc-prompt-item-title">{item.slashName ?? item.name}</span>
-                          {item.origin === 'project' && (
-                            <span className="sc-prompt-badge sc-prompt-badge-project">
-                              {item.sourceLabel || t('originProject')}
-                            </span>
-                          )}
-                          {item.isSubagent && (
-                            <span className="sc-prompt-badge sc-prompt-badge-subagent">
-                              {t('subagent')}
-                            </span>
-                          )}
-                          {item.hasChain && (
-                            <span className="sc-prompt-badge sc-prompt-badge-chain">
-                              {t('chain')}
-                            </span>
+            {activeTab === 'prompts' ? (
+              <div id="sc-prompt-listbox" className="sc-prompt-list" role="listbox">
+                {loading ? (
+                  <div className="sc-prompt-status-view">{t('loadingTemplates')}</div>
+                ) : filteredTemplates.length === 0 ? (
+                  <div className="sc-prompt-status-view">
+                    {templates.length === 0 ? t('empty') : t('noMatchingTemplates')}
+                  </div>
+                ) : (
+                  filteredTemplates.map((item, index) => {
+                    const isHighlighted = index === highlightedIndex
+                    const optionId = `prompt-opt-${item.origin}-${item.name}`
+                    return (
+                      <div
+                        id={optionId}
+                        key={`${item.origin}:${item.name}`}
+                        className="sc-prompt-item"
+                        data-highlighted={isHighlighted}
+                        role="option"
+                        aria-selected={isHighlighted}
+                        onClick={() => handleSelectTemplate(item)}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                      >
+                        <div className="sc-prompt-item-main">
+                          <div className="sc-prompt-item-header">
+                            <span className="sc-prompt-item-title">{item.slashName ?? item.name}</span>
+                            {item.origin === 'project' && (
+                              <span className="sc-prompt-badge sc-prompt-badge-project">
+                                {item.sourceLabel || t('originProject')}
+                              </span>
+                            )}
+                            {item.isSubagent && (
+                              <span className="sc-prompt-badge sc-prompt-badge-subagent">
+                                {t('subagent')}
+                              </span>
+                            )}
+                            {item.hasChain && (
+                              <span className="sc-prompt-badge sc-prompt-badge-chain">
+                                {t('chain')}
+                              </span>
+                            )}
+                          </div>
+                          {item.description && (
+                            <div className="sc-prompt-item-desc">{item.description}</div>
                           )}
                         </div>
-                        {item.description && (
-                          <div className="sc-prompt-item-desc">{item.description}</div>
-                        )}
+                        <div className="sc-prompt-item-aside">
+                          <span className="sc-prompt-slash-pill">
+                            /{item.slashName ?? item.name}
+                          </span>
+                        </div>
                       </div>
-                      <div className="sc-prompt-item-aside">
-                        <span className="sc-prompt-slash-pill">
-                          /{item.slashName ?? item.name}
-                        </span>
-                      </div>
+                    )
+                  })
+                )}
+              </div>
+            ) : (
+              <>
+                {categories.length > 0 && (
+                  <div className="sc-prompt-category-bar">
+                    <button
+                      type="button"
+                      className="sc-prompt-category-tab"
+                      data-active={selectedCategoryId === 'all'}
+                      onClick={() => {
+                        setSelectedCategoryId('all')
+                        searchInputRef.current?.focus()
+                      }}
+                    >
+                      {t('allCategories')}
+                    </button>
+                    {categories.map(cat => (
+                      <button
+                        key={`${cat.origin}:${cat.id}`}
+                        type="button"
+                        className="sc-prompt-category-tab"
+                        data-active={selectedCategoryId === cat.id}
+                        onClick={() => {
+                          setSelectedCategoryId(cat.id)
+                          searchInputRef.current?.focus()
+                        }}
+                        title={cat.description || cat.name}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="sc-prompt-keywords-grid">
+                  {loading && categories.length === 0 ? (
+                    <div className="sc-prompt-status-view">{t('loadingKeywords')}</div>
+                  ) : visibleKeywords.length === 0 ? (
+                    <div className="sc-prompt-status-view">
+                      {query ? t('noMatchingKeywords') : t('emptyKeywords')}
                     </div>
-                  )
-                })
-              )}
-            </div>
+                  ) : (
+                    visibleKeywords.map(kw => (
+                      <button
+                        key={kw}
+                        type="button"
+                        className="sc-prompt-keyword-pill"
+                        onClick={() => handleSelectKeyword(kw)}
+                        title={`+ ${kw}`}
+                      >
+                        {kw}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
           </div>,
           document.body,
         )}
     </div>
   )
 }
+

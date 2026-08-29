@@ -66,3 +66,38 @@ export const catalogMutationResultSchema = z.object({
   origin: originSchema.optional(),
   error: z.string().optional(),
 })
+
+export const keywordCategorySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  keywords: z.array(z.string()),
+})
+
+export const inventoryKeywordCategorySchema = keywordCategorySchema.extend({
+  origin: originSchema,
+  sourceLabel: z.string(),
+})
+
+export const keywordInventoryErrorSchema = z.object({
+  origin: originSchema,
+  error: z.string(),
+})
+
+export const keywordInventorySchema = z.object({
+  categories: z.array(inventoryKeywordCategorySchema),
+  errors: z.array(keywordInventoryErrorSchema),
+})
+
+export const keywordWriteRequestSchema = z.object({
+  origin: originSchema,
+  categories: z.array(keywordCategorySchema),
+  workspaceRoot: workspaceRootSchema,
+})
+
+export const keywordMutationResultSchema = z.object({
+  ok: z.boolean(),
+  origin: originSchema.optional(),
+  error: z.string().optional(),
+})
+

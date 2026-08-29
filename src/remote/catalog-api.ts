@@ -1,4 +1,5 @@
 import { TemplateLoader } from '../loader/template-loader.js'
+import { KeywordLoader } from '../loader/keyword-loader.js'
 import { TemplateValidationError } from '../loader/frontmatter-parser.js'
 import { assertTemplateName, assertTemplateSize } from '../loader/names.js'
 import type {
@@ -9,8 +10,14 @@ import type {
   TemplateInventory,
   TemplateWriteRequest,
 } from '../types/catalog.js'
+import type {
+  KeywordInventory,
+  KeywordMutationResult,
+  KeywordWriteRequest,
+} from '../types/keywords.js'
 
 export type { TemplateCopyRequest, TemplateIdentity, TemplateWriteRequest } from '../types/catalog.js'
+export type { KeywordInventory, KeywordMutationResult, KeywordWriteRequest } from '../types/keywords.js'
 
 function asError(error: unknown): string {
   return error instanceof TemplateValidationError || error instanceof Error ? error.message : String(error)
@@ -21,10 +28,30 @@ function isMissingFile(error: unknown): boolean {
 }
 
 export class SmartCommandsCatalogApi {
-  constructor(private readonly loader: TemplateLoader) {}
+  private readonly keywordLoader: KeywordLoader
+
+  constructor(
+    private readonly loader: TemplateLoader,
+    keywordLoader?: KeywordLoader,
+  ) {
+    this.keywordLoader = keywordLoader ?? new KeywordLoader(loader.directories.projectDir)
+  }
 
   private retarget(workspaceRoot?: string): void {
-    if (workspaceRoot) this.loader.retargetProject(workspaceRoot)
+    if (workspaceRoot) {
+      this.loader.retargetProject(workspaceRoot)
+      this.keywordLoader.retargetProject(workspaceRoot)
+    }
+  }
+
+  async listKeywords(request: { workspaceRoot?: string } = {}): Promise<KeywordInventory> {
+    this.retarget(request.workspaceRoot)
+    return await this.keywordLoader.loadInventory(request.workspaceRoot)
+  }
+
+  async writeKeywords(request: KeywordWriteRequest): Promise<KeywordMutationResult> {
+    this.retarget(request.workspaceRoot)
+    return await this.keywordLoader.writeCategories(request.origin, request.categories, request.workspaceRoot)
   }
 
   async list(request: { workspaceRoot?: string } = {}): Promise<TemplateInventory> {

@@ -10,12 +10,22 @@ import type {
   TemplateInventory,
   TemplateWriteRequest,
 } from '../types/catalog.js'
+import type {
+  KeywordInventory,
+  KeywordMutationResult,
+  KeywordWriteRequest,
+} from '../types/keywords.js'
 
 export type {
   TemplateCopyRequest,
   TemplateIdentity,
   TemplateWriteRequest,
 } from '../types/catalog.js'
+export type {
+  KeywordInventory,
+  KeywordMutationResult,
+  KeywordWriteRequest,
+} from '../types/keywords.js'
 export { SmartCommandsCatalogApi } from './catalog-api.js'
 
 const GLOBAL_KEY = Symbol.for('dsh.smartCommands.catalogApi')
@@ -64,6 +74,16 @@ export class SmartCommandsGateway extends TypertRemoteService {
   @Remote('copy')
   copy(request: TemplateCopyRequest): Promise<CatalogMutationResult> {
     return catalogApiOf().copy(request)
+  }
+
+  @Remote('listKeywords')
+  listKeywords(request: { workspaceRoot?: string } = {}): Promise<KeywordInventory> {
+    return catalogApiOf().listKeywords(request)
+  }
+
+  @Remote('writeKeywords')
+  writeKeywords(request: KeywordWriteRequest): Promise<KeywordMutationResult> {
+    return catalogApiOf().writeKeywords(request)
   }
 }
 
