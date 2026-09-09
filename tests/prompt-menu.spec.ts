@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { InventoryTemplate, TemplateInventory } from '../src/types/catalog.js'
 import { filterInventory, matchesCatalogQuery } from '../src/catalog-query.js'
-import { formatTemplateDraft } from '../src/client/draft-format.js'
+import { appendKeywordToDraft, formatTemplateDraft, resolveComposerDraft } from '../src/client/draft-format.js'
 
 describe('PromptMenu query and filtering logic', () => {
   const sampleTemplates: InventoryTemplate[] = [
@@ -107,8 +107,68 @@ describe('formatTemplateDraft function', () => {
     expect(formatTemplateDraft('', templateWithoutSlash)).toBe('/custom-prompt ')
   })
 
-  it('joins with newline when existing draft is present', () => {
-    expect(formatTemplateDraft('const a = 1;', templateWithSlash)).toBe('/explain \nconst a = 1;')
-    expect(formatTemplateDraft('Check this code please', templateWithoutSlash)).toBe('/custom-prompt \nCheck this code please')
+  it('appends the command below existing draft', () => {
+    expect(formatTemplateDraft('const a = 1;', templateWithSlash)).toBe('const a = 1;\n/explain ')
+    expect(formatTemplateDraft('Check this code please', templateWithoutSlash)).toBe('Check this code please\n/custom-prompt ')
+  })
+
+  it('stacks consecutive prompt clicks downward', () => {
+    const first = formatTemplateDraft('', templateWithSlash)
+    expect(first).toBe('/explain ')
+    expect(formatTemplateDraft(first, templateWithoutSlash)).toBe('/explain\n/custom-prompt ')
+  })
+})
+
+describe('appendKeywordToDraft', () => {
+  it('appends keywords sequentially with whitespace', () => {
+    let draft = ''
+    draft = appendKeywordToDraft(draft, '--verbose')
+    expect(draft).toBe('--verbose ')
+
+    draft = appendKeywordToDraft(draft, 'src/client')
+    expect(draft).toBe('--verbose src/client ')
+
+    draft = appendKeywordToDraft(draft, '--dry-run')
+    expect(draft).toBe('--verbose src/client --dry-run ')
+  })
+
+  it('handles existing draft correctly when appending', () => {
+    expect(appendKeywordToDraft('/code-review', 'src/engine')).toBe('/code-review src/engine ')
+  })
+})
+
+describe('resolveComposerDraft', () => {
+  it('prefers liveDraft from useInput over stale DOM / legacy text fields', () => {
+    expect(resolveComposerDraft({
+      liveDraft: '/review foo',
+      input: { text: 'stale-text' },
+      contentEditableText: 'stale-dom',
+    })).toBe('/review foo')
+  })
+
+  it('treats empty liveDraft as authoritative so a cleared composer is not refilled from DOM', () => {
+    expect(resolveComposerDraft({
+      liveDraft: '',
+      input: { text: 'stale-text' },
+      contentEditableText: 'stale-dom',
+    })).toBe('')
+  })
+
+  it('falls back to InputState.draft then legacy input.text', () => {
+    expect(resolveComposerDraft({
+      input: { draft: 'from-draft' },
+      contentEditableText: 'stale-dom',
+    })).toBe('from-draft')
+    expect(resolveComposerDraft({
+      input: { text: 'from-text' },
+      contentEditableText: 'stale-dom',
+    })).toBe('from-text')
+  })
+
+  it('uses contenteditable / composer DOM only when no session snapshot is available', () => {
+    expect(resolveComposerDraft({
+      contentEditableText: 'from-lexical',
+    })).toBe('from-lexical')
+    expect(resolveComposerDraft({})).toBe('')
   })
 })

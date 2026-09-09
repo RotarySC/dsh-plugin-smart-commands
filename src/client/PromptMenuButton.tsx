@@ -8,7 +8,7 @@ import type { SmartCommandsLocaleKey } from './locales.js'
 import type { SmartCommandsRemote } from './SmartCommandsSection.js'
 import { PROMPT_MENU_CSS } from './prompt-menu.css.js'
 import { ChevronDownIcon, PromptNerdIcon, TagIcon } from './icons.js'
-import { formatTemplateDraft } from './draft-format.js'
+import { appendKeywordToDraft, focusComposer, formatTemplateDraft, readComposerDomDraft, resolveComposerDraft } from './draft-format.js'
 
 const MENU_STYLE_ID = '@deepseek-ai/dsh-plugin-smart-commands/prompt-menu.css'
 
@@ -17,7 +17,16 @@ export interface InputActionsLike {
 }
 
 export interface InputZoneLike {
-  readonly input?: { readonly text?: string }
+  readonly input?: { readonly text?: string; readonly draft?: string }
+}
+
+export interface InputStateLike {
+  readonly draft?: string
+}
+
+export type SnapshotSelectorHookLike<T> = {
+  (): T | undefined
+  <Selected>(selector: (state: T) => Selected): Selected
 }
 
 export interface PromptMenuButtonProps {
@@ -26,8 +35,9 @@ export interface PromptMenuButtonProps {
   connect?: () => Promise<SmartCommandsRemote | undefined>
   workspaceRoot?: () => string | undefined
   inputActions?: InputActionsLike
+  useInput?: SnapshotSelectorHookLike<InputStateLike>
   ownerProps?: InputZoneLike
-  input?: { text?: string }
+  input?: { text?: string; draft?: string }
 }
 
 interface InventoryCacheEntry {
@@ -57,8 +67,16 @@ function ensureMenuStyles(): void {
 type MenuActiveTab = 'prompts' | 'keywords'
 
 export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
-  const { t, api, connect, workspaceRoot, inputActions, ownerProps, input } = props
+  const { t, api, connect, workspaceRoot, inputActions, useInput, ownerProps, input } = props
   ensureMenuStyles()
+
+  const liveDraft = useInput ? useInput(state => state?.draft) : undefined
+  const draftRef = useRef('')
+  const seenLiveDraftRef = useRef<string | undefined>(undefined)
+  if (typeof liveDraft === 'string' && liveDraft !== seenLiveDraftRef.current) {
+    seenLiveDraftRef.current = liveDraft
+    draftRef.current = liveDraft
+  }
 
   const [isOpen, setIsOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<MenuActiveTab>('prompts')
@@ -245,42 +263,36 @@ export function PromptMenuButton(props: PromptMenuButtonProps): ReactNode {
   }, [query, activeTab])
 
   const restoreFocusToComposer = useCallback(() => {
-    if (typeof document === 'undefined') return
-    const textarea = document.querySelector('textarea')
-    if (textarea) {
-      textarea.focus()
-    }
+    focusComposer()
   }, [])
 
+  const resolveCurrentDraft = useCallback(() => {
+    if (typeof liveDraft === 'string') return draftRef.current
+    const resolved = resolveComposerDraft({
+      input,
+      ownerInput: ownerProps?.input,
+      contentEditableText: readComposerDomDraft(),
+    })
+    if (resolved) draftRef.current = resolved
+    return draftRef.current || resolved
+  }, [liveDraft, input, ownerProps])
+
+  const commitDraft = useCallback((nextDraft: string) => {
+    draftRef.current = nextDraft
+    inputActions?.setDraft(nextDraft)
+  }, [inputActions])
+
   const handleSelectTemplate = useCallback((template: InventoryTemplate) => {
-    const currentDraft = input?.text ?? ownerProps?.input?.text ?? (typeof document !== 'undefined' ? document.querySelector('textarea')?.value ?? '' : '')
-    const nextDraft = formatTemplateDraft(currentDraft, template)
-
-    if (inputActions?.setDraft) {
-      inputActions.setDraft(nextDraft)
-    }
-
+    commitDraft(formatTemplateDraft(resolveCurrentDraft(), template))
     setIsOpen(false)
     setTimeout(restoreFocusToComposer, 0)
-  }, [input, ownerProps, inputActions, restoreFocusToComposer])
+  }, [resolveCurrentDraft, commitDraft, restoreFocusToComposer])
 
   const handleSelectKeyword = useCallback((keyword: string) => {
-    const currentDraft = input?.text ?? ownerProps?.input?.text ?? (typeof document !== 'undefined' ? document.querySelector('textarea')?.value ?? '' : '')
-    const trimmed = currentDraft.trimEnd()
-    const nextDraft = trimmed.length > 0 ? `${trimmed} ${keyword} ` : `${keyword} `
-
-    if (inputActions?.setDraft) {
-      inputActions.setDraft(nextDraft)
-    } else if (typeof document !== 'undefined') {
-      const textarea = document.querySelector('textarea')
-      if (textarea) {
-        textarea.value = nextDraft
-        textarea.dispatchEvent(new Event('input', { bubbles: true }))
-      }
-    }
+    commitDraft(appendKeywordToDraft(resolveCurrentDraft(), keyword))
     // Keep popover open to allow continuous clicking
     searchInputRef.current?.focus()
-  }, [input, ownerProps, inputActions])
+  }, [resolveCurrentDraft, commitDraft])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
