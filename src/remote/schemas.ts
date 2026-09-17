@@ -101,3 +101,66 @@ export const keywordMutationResultSchema = z.object({
   error: z.string().optional(),
 })
 
+const chainRunStatusSchema = z.union([
+  z.literal('running'),
+  z.literal('succeeded'),
+  z.literal('failed'),
+  z.literal('cancelled'),
+])
+
+const chainRunStepStatusSchema = z.union([
+  z.literal('pending'),
+  z.literal('running'),
+  z.literal('done'),
+  z.literal('failed'),
+  z.literal('skipped'),
+])
+
+/** One chain step's live state inside a detached run. */
+export const chainRunStepSchema = z.object({
+  name: z.string(),
+  index: z.number(),
+  status: chainRunStepStatusSchema,
+  startedAt: z.number().optional(),
+  endedAt: z.number().optional(),
+  error: z.string().optional(),
+})
+
+/** One detached chain run as the dock panel reads it. */
+export const chainRunRecordSchema = z.object({
+  id: z.string(),
+  command: z.string(),
+  sessionId: z.string(),
+  workspaceRoot: z.string(),
+  status: chainRunStatusSchema,
+  startedAt: z.number(),
+  endedAt: z.number().optional(),
+  round: z.number(),
+  rounds: z.number(),
+  steps: z.array(chainRunStepSchema),
+  files: z.array(z.string()),
+  text: z.string().optional(),
+  error: z.string().optional(),
+})
+
+export const chainRunInventorySchema = z.object({
+  runs: z.array(chainRunRecordSchema),
+})
+
+export const chainRunScopeSchema = z.object({
+  sessionId: z.string().min(1).optional(),
+  workspaceRoot: workspaceRootSchema,
+  includeFinished: z.boolean().optional(),
+})
+
+export const chainRunCancelRequestSchema = z.object({
+  runId: z.string(),
+  sessionId: z.string().min(1).optional(),
+})
+
+export const chainRunCancelResultSchema = z.object({
+  ok: z.boolean(),
+  runId: z.string().optional(),
+  error: z.string().optional(),
+})
+

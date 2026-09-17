@@ -2,6 +2,12 @@ import { bindSmartCommandsDescriptors, SMART_COMMANDS_PACKAGE } from './remote/c
 import {
   catalogMutationResultSchema,
   catalogScopeSchema,
+  chainRunCancelRequestSchema,
+  chainRunCancelResultSchema,
+  chainRunInventorySchema,
+  chainRunRecordSchema,
+  chainRunScopeSchema,
+  chainRunStepSchema,
   inventoryKeywordCategorySchema,
   keywordCategorySchema,
   keywordInventorySchema,
@@ -26,6 +32,12 @@ const schemas = {
   KeywordInventory: keywordInventorySchema,
   KeywordWriteRequest: keywordWriteRequestSchema,
   KeywordMutationResult: keywordMutationResultSchema,
+  ChainRunStep: chainRunStepSchema,
+  ChainRunRecord: chainRunRecordSchema,
+  ChainRunScope: chainRunScopeSchema,
+  ChainRunInventory: chainRunInventorySchema,
+  ChainRunCancelRequest: chainRunCancelRequestSchema,
+  ChainRunCancelResult: chainRunCancelResultSchema,
 }
 
 export const TYPERT = {

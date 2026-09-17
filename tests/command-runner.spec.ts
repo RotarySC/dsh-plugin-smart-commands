@@ -1,8 +1,9 @@
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CommandRunner } from '../src/engine/command-runner.ts'
+import { ChainRunRegistry } from '../src/engine/run-registry.ts'
 import { activateSmartCommands } from '../src/plugin.ts'
 import { TemplateLoader } from '../src/loader/template-loader.ts'
 import { wrapDshSubagents } from '../src/host/dsh-adapter.ts'
@@ -36,10 +37,13 @@ describe('command runner and tools', () => {
     disposers.length = 0
   })
 
-  async function workspace(): Promise<{
+  async function workspace(overrides: {
+    subagentStart?: (request: { prompt: string }) => Promise<{ text: string; stopReason: string; changedFiles: string[] }>
+  } = {}): Promise<{
     root: string
     loader: TemplateLoader
     runner: CommandRunner
+    runs: ChainRunRegistry
     session: {
       seen: Array<string | undefined>
       getModel(): string | undefined
@@ -75,15 +79,16 @@ describe('command runner and tools', () => {
       modelSession: session,
       subagents: {
         list: () => ['spawn', 'fork'],
-        start: async request => ({
+        start: overrides.subagentStart ?? (async request => ({
           text: `child:${request.prompt}`,
           stopReason: 'completed',
           changedFiles: [],
-        }),
+        })),
       },
     }
-    const runner = new CommandRunner({ host, loader, config: DEFAULT_PLUGIN_CONFIG })
-    return { root, loader, runner, session }
+    const runs = new ChainRunRegistry()
+    const runner = new CommandRunner({ host, loader, config: DEFAULT_PLUGIN_CONFIG, runs })
+    return { root, loader, runner, runs, session }
   }
 
   it('lists templates and runs a single-command delegation with model fallback', async () => {
@@ -591,5 +596,94 @@ Talk about $@
     expect(tools.get('smart_command_list')!.output.render({}, listed)).toEqual([
       { type: 'text', text: 'No smart commands loaded.' },
     ])
+  })
+
+  it('starts a chain as a detached run and settles the command immediately', async () => {
+    const { runner, runs } = await workspace()
+    const result = await runner.startDetached(
+      { command: 'pipeline', args: ['auth'] },
+      new AbortController().signal,
+      { id: 'session-1', original: {} },
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toContain('pipeline')
+    expect(result.steps).toEqual([])
+    expect(result.rounds).toBe(0)
+
+    const [started] = runs.list()
+    expect(started).toBeDefined()
+    expect(started!.command).toBe('pipeline')
+    expect(started!.sessionId).toBe('session-1')
+    expect(started!.status).toBe('running')
+    expect(started!.steps.map(step => step.name)).toEqual(['scan', 'fix'])
+
+    await vi.waitFor(() => { expect(runs.list()[0]!.status).toBe('succeeded') })
+    const settled = runs.list()[0]!
+    expect(settled.steps.map(step => step.status)).toEqual(['done', 'done'])
+    expect(settled.text).toContain('child:')
+    expect(settled.endedAt).toBeGreaterThanOrEqual(settled.startedAt)
+  })
+
+  it('cancels a live detached chain through the run table', async () => {
+    const { runner, runs } = await workspace({ subagentStart: () => new Promise(() => {}) })
+    const result = await runner.startDetached(
+      { command: 'pipeline' },
+      new AbortController().signal,
+      { id: 'session-1', original: {} },
+    )
+    expect(result.ok).toBe(true)
+
+    const run = runs.list()[0]!
+    expect(run.status).toBe('running')
+    await vi.waitFor(() => { expect(runs.list()[0]!.steps[0]?.status).toBe('running') })
+
+    expect(runs.cancel(run.id, 'session-1')).toEqual({ ok: true, runId: run.id })
+    expect(runs.list()[0]!.status).toBe('cancelled')
+  })
+
+  it('aborts a detached run when the command transaction signal fires', async () => {
+    const { runner, runs } = await workspace({ subagentStart: () => new Promise(() => {}) })
+    const gate = new AbortController()
+    await runner.startDetached({ command: 'pipeline' }, gate.signal, { id: 'session-1', original: {} })
+
+    gate.abort()
+
+    expect(runs.list()[0]!.status).toBe('cancelled')
+  })
+
+  it('keeps non-chain templates on the blocking path and leaves the run table empty', async () => {
+    const { runner, runs } = await workspace()
+    const result = await runner.startDetached(
+      { command: 'review', args: ['src/a.ts'] },
+      new AbortController().signal,
+      { id: 'session-1', original: {} },
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toContain('child:')
+    expect(runs.list()).toEqual([])
+  })
+
+  it('never detaches without a session identity', async () => {
+    const { runner, runs } = await workspace()
+    const result = await runner.startDetached({ command: 'pipeline' }, new AbortController().signal)
+
+    expect(result.ok).toBe(true)
+    expect(runs.list()).toEqual([])
+  })
+
+  it('reports an unknown command from the detached path', async () => {
+    const { runner, runs } = await workspace()
+    const result = await runner.startDetached(
+      { command: 'nope' },
+      new AbortController().signal,
+      { id: 'session-1', original: {} },
+    )
+
+    expect(result).toMatchObject({ ok: false, error: 'unknown smart command: nope' })
+    expect(runs.list()).toEqual([])
   })
 })

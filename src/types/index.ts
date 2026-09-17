@@ -48,6 +48,21 @@ export type {
 } from './execution.js'
 
 export type {
+  ChainRunCancelRequest,
+  ChainRunCancelResult,
+  ChainRunHandle,
+  ChainRunInventory,
+  ChainRunListFilter,
+  ChainRunRecord,
+  ChainRunScope,
+  ChainRunStartInput,
+  ChainRunStatus,
+  ChainRunStep,
+  ChainRunStepStatus,
+  ChainStepProgress,
+} from './runs.js'
+
+export type {
   HostAgent,
   HostCommands,
   HostConfiguration,

@@ -3,6 +3,12 @@ import { bindSmartCommandsDescriptors, SMART_COMMANDS_PACKAGE } from './remote/c
 import {
   catalogMutationResultSchema,
   catalogScopeSchema,
+  chainRunCancelRequestSchema,
+  chainRunCancelResultSchema,
+  chainRunInventorySchema,
+  chainRunRecordSchema,
+  chainRunScopeSchema,
+  chainRunStepSchema,
   inventoryKeywordCategorySchema,
   keywordCategorySchema,
   keywordInventorySchema,
@@ -28,6 +34,12 @@ import type {
   KeywordMutationResult,
   KeywordWriteRequest,
 } from './types/keywords.js'
+import type {
+  ChainRunCancelRequest,
+  ChainRunCancelResult,
+  ChainRunInventory,
+  ChainRunScope,
+} from './types/runs.js'
 
 export const TYPERT_REMOTE: TypertRemoteContribution = {
   package: SMART_COMMANDS_PACKAGE,
@@ -43,6 +55,12 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
     KeywordInventory: keywordInventorySchema,
     KeywordWriteRequest: keywordWriteRequestSchema,
     KeywordMutationResult: keywordMutationResultSchema,
+    ChainRunStep: chainRunStepSchema,
+    ChainRunRecord: chainRunRecordSchema,
+    ChainRunScope: chainRunScopeSchema,
+    ChainRunInventory: chainRunInventorySchema,
+    ChainRunCancelRequest: chainRunCancelRequestSchema,
+    ChainRunCancelResult: chainRunCancelResultSchema,
   }),
 }
 
@@ -57,6 +75,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     copy: (request: TemplateCopyRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<CatalogMutationResult>>
     listKeywords: (request?: CatalogScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<KeywordInventory>>
     writeKeywords: (request: KeywordWriteRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<KeywordMutationResult>>
+    listRuns: (request?: ChainRunScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunInventory>>
+    cancelRun: (request: ChainRunCancelRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunCancelResult>>
   }
   interface TypertRemoteMap {
     'smartCommands/list': (request?: CatalogScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<TemplateInventory>>
@@ -66,6 +86,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'smartCommands/copy': (request: TemplateCopyRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<CatalogMutationResult>>
     'smartCommands/listKeywords': (request?: CatalogScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<KeywordInventory>>
     'smartCommands/writeKeywords': (request: KeywordWriteRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<KeywordMutationResult>>
+    'smartCommands/listRuns': (request?: ChainRunScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunInventory>>
+    'smartCommands/cancelRun': (request: ChainRunCancelRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunCancelResult>>
   }
   interface TypertRemoteNamespaceMap {
     smartCommands: TypertRemoteNamespaceSmartCommands

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { isParallelStep, type ChainStep, type ParallelStep, type ParallelTaskItem, type SequentialStep } from '../types/chain.js'
 import type { DelegationRequest, StepResult } from '../types/execution.js'
 import type { PluginConfig } from '../types/host.js'
+import type { ChainStepProgress } from '../types/runs.js'
 import {
   aggregateParallelOutputs,
   interpolateChainTask,
@@ -25,6 +26,8 @@ export interface ChainRunOptions {
   readonly worktreeBaseDir?: string
   readonly runId?: string
   readonly skills?: string[]
+  /** Step-boundary observer for the run panel; never affects the run's outcome. */
+  readonly onStep?: (event: ChainStepProgress) => void
 }
 
 export interface ChainRunResult {
@@ -117,20 +120,40 @@ export class ChainExecutor {
     let previous = ''
     const runId = options.runId ?? `chain-${this.now().toString(36)}`
 
-    for (const step of steps) {
+    for (const [index, step] of steps.entries()) {
       this.throwIfAborted(options.signal)
-      if (isParallelStep(step)) {
-        const result = await this.runParallel(step, outputs, previous, options, runId)
-        collected.push(...result.steps)
-        for (const file of result.files) files.add(file)
-        previous = result.text
-        continue
+      const notify = (phase: ChainStepProgress['phase'], error?: unknown): void => {
+        if (!options.onStep) return
+        try {
+          options.onStep({
+            phase,
+            index,
+            name: step.name,
+            ...error !== undefined ? { error: error instanceof Error ? error.message : String(error) } : {},
+          })
+        } catch {
+          // A progress observer is advisory: it must never break the chain.
+        }
       }
-      const result = await this.runSequential(step, outputs, previous, options, runId)
-      collected.push(result)
-      for (const file of result.changedFiles) files.add(file)
-      previous = result.text
-      if (result.as) outputs[result.as] = result.text
+      notify('start')
+      try {
+        if (isParallelStep(step)) {
+          const result = await this.runParallel(step, outputs, previous, options, runId)
+          collected.push(...result.steps)
+          for (const file of result.files) files.add(file)
+          previous = result.text
+        } else {
+          const result = await this.runSequential(step, outputs, previous, options, runId)
+          collected.push(result)
+          for (const file of result.changedFiles) files.add(file)
+          previous = result.text
+          if (result.as) outputs[result.as] = result.text
+        }
+      } catch (error) {
+        notify('end', error)
+        throw error
+      }
+      notify('end')
     }
 
     return {

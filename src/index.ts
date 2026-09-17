@@ -36,6 +36,7 @@ export { parseCommandArgs, renderTemplate, substituteArgs } from './engine/templ
 export { selectModel, withModelOverride } from './engine/model-router.js'
 export { validateChainOutputBindings } from './engine/chain-validation.js'
 export { ChainExecutor } from './engine/chain-executor.js'
+export { ChainRunRegistry, type ChainRunRegistryOptions } from './engine/run-registry.js'
 export { SubagentBridge } from './engine/subagent-bridge.js'
 
 export interface CordisLikeContext {
@@ -127,7 +128,7 @@ export function apply(ctx: CordisLikeContext, config: Config = {}): void {
     },
   }
   const activated = startSmartCommands(host)
-  tryStartSmartCommandsGateway(ctx, activated.loader)
+  tryStartSmartCommandsGateway(ctx, activated.loader, activated.runs)
   if (typeof ctx.inject === 'function') {
     ctx.inject(['typert'], scoped => {
       const typert = service<{ register(contribution: typeof TYPERT): (() => void) | void }>(scoped, 'typert')
@@ -141,7 +142,7 @@ export function apply(ctx: CordisLikeContext, config: Config = {}): void {
           // Duplicate registration from typert-loader is fine.
         }
       }
-      tryStartSmartCommandsGateway(ctx, activated.loader)
+      tryStartSmartCommandsGateway(ctx, activated.loader, activated.runs)
     })
   }
   if (typeof ctx.inject === 'function' && !host.commands) {

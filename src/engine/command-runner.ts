@@ -9,7 +9,9 @@ import { formatModel, parseModelRef, selectModel, withModelOverride } from './mo
 import { loadAvailableModels } from '../host/dsh-adapter.js'
 import { slashCommandNameFor } from './slash-name.js'
 import { ChainExecutor } from './chain-executor.js'
+import { ChainRunRegistry } from './run-registry.js'
 import { SubagentBridge } from './subagent-bridge.js'
+import type { ChainStepProgress } from '../types/runs.js'
 
 const COMMAND_NAME_PATTERN = TEMPLATE_NAME_PATTERN
 
@@ -17,6 +19,8 @@ export interface CommandRunnerOptions {
   readonly host: SmartCommandsHost
   readonly loader: TemplateLoader
   readonly config: PluginConfig
+  /** Live run table for detached chain runs; absent in unit tests that never detach. */
+  readonly runs?: ChainRunRegistry
 }
 
 function applyOverrides(template: CommandTemplate, overrides?: RuntimeOverrides): CommandTemplate {
@@ -85,7 +89,12 @@ export class CommandRunner {
     })
   }
 
-  async run(request: RunCommandRequest, signal: AbortSignal, parent?: HostAgent): Promise<CommandRunResult> {
+  async run(
+    request: RunCommandRequest,
+    signal: AbortSignal,
+    parent?: HostAgent,
+    runId?: string,
+  ): Promise<CommandRunResult> {
     const started = this.now()
     try {
       await this.ready()
@@ -147,6 +156,7 @@ export class CommandRunner {
             return { ok: false as const, command: template.name, error: 'Operation cancelled by user' }
           }
           rounds = round
+          if (runId && round > 1) this.options.runs?.beginRound(runId, round)
           if (template.chain?.length) {
             const executor = new ChainExecutor(bridge, this.options.config, () => this.now(), template.context)
             const chainResult = await executor.run(template.chain, {
@@ -158,6 +168,7 @@ export class CommandRunner {
               workspaceRoot: this.options.host.workspaceRoot,
               worktree: template.worktree,
               ...template.skills ? { skills: template.skills } : {},
+              ...runId ? { onStep: (event: ChainStepProgress) => { this.reportStep(runId, event) } } : {},
             })
             steps.push(...chainResult.steps)
             lastText = chainResult.text
@@ -258,6 +269,79 @@ export class CommandRunner {
     }
   }
 
+  /**
+   * Start a chain template as a detached run and settle the call immediately.
+   *
+   * The slash-command transaction freezes the composer until its handler
+   * resolves, so a chain must never be awaited on that path: the run owns its
+   * own AbortSignal, reports per-step progress into the run table, and the run
+   * panel cancels it. Any template that cannot detach (no run table, no session
+   * identity, or no chain) falls back to the blocking {@link run}.
+   */
+  async startDetached(
+    request: RunCommandRequest,
+    signal: AbortSignal,
+    parent?: HostAgent,
+  ): Promise<CommandRunResult> {
+    const started = this.now()
+    await this.ready()
+    const runs = this.options.runs
+    const loaded = this.resolve(request.command)
+    if (!loaded) {
+      return {
+        ok: false,
+        command: request.command,
+        error: `unknown smart command: ${request.command}`,
+        hint: 'Call smart_command_list to inspect available templates.',
+      }
+    }
+    const template = applyOverrides(loaded, request.overrides)
+    if (!runs || !parent?.id || !template.chain?.length) {
+      return await this.run(request, signal, parent)
+    }
+
+    const steps = template.chain
+    const handle = runs.start({
+      command: template.name,
+      sessionId: parent.id,
+      workspaceRoot: this.options.host.workspaceRoot,
+      stepNames: steps.map(step => step.name),
+      rounds: template.loop ?? 1,
+    })
+    // The command transaction's own signal still fires while the handler is
+    // pending (connection loss, teardown before settlement); afterwards the run
+    // is only reachable through the run table.
+    const forwardAbort = (): void => { runs.cancel(handle.id) }
+    signal.addEventListener('abort', forwardAbort)
+    void (async () => {
+      try {
+        const result = await this.run(request, handle.signal, parent, handle.id)
+        runs.finish(handle.id, result.ok
+          ? { status: 'succeeded', text: result.text, files: result.files }
+          : { status: handle.signal.aborted ? 'cancelled' : 'failed', error: result.error })
+      } catch (error) {
+        runs.finish(handle.id, {
+          status: handle.signal.aborted ? 'cancelled' : 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        })
+      } finally {
+        signal.removeEventListener('abort', forwardAbort)
+      }
+    })()
+
+    const plural = steps.length === 1 ? '' : 's'
+    return {
+      ok: true,
+      command: template.name,
+      restored: false,
+      text: `Started \`${template.name}\` (${steps.length} step${plural}) in the background. Progress and cancel are in the run panel.`,
+      steps: [],
+      files: [],
+      durationMs: this.now() - started,
+      rounds: 0,
+    }
+  }
+
   async manage(request: ManageTemplateRequest): Promise<{ ok: boolean; path?: string; error?: string }> {
     await this.ready()
     if (!COMMAND_NAME_PATTERN.test(request.name) || request.name.includes('..')) {
@@ -288,6 +372,19 @@ export class CommandRunner {
         error: error instanceof TemplateValidationError || error instanceof Error ? error.message : String(error),
       }
     }
+  }
+
+  /** Mirror one executor step boundary into the run table. */
+  private reportStep(runId: string, event: ChainStepProgress): void {
+    const runs = this.options.runs
+    if (!runs) return
+    if (event.phase === 'start') {
+      runs.stepStarted(runId, event.index)
+      return
+    }
+    runs.stepFinished(runId, event.index, event.error
+      ? { status: 'failed', error: event.error }
+      : { status: 'done' })
   }
 
   private now(): number {

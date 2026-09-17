@@ -2,6 +2,7 @@ import { homedir } from 'node:os'
 import { DEFAULT_PLUGIN_CONFIG, type HostAgent, type PluginConfig, type SmartCommandsHost } from './types/host.js'
 import { asHostAgent } from './host/dsh-adapter.js'
 import { CommandRunner } from './engine/command-runner.js'
+import { ChainRunRegistry } from './engine/run-registry.js'
 import { slashCommandNameFor } from './engine/slash-name.js'
 import { extractTemplateSlots, parseCommandArgs } from './engine/template-engine.js'
 import { resolveTemplateDirectories, TemplateLoader } from './loader/template-loader.js'
@@ -13,6 +14,8 @@ import type { CommandTemplate } from './types/template.js'
 export interface ActivatedPlugin {
   readonly loader: TemplateLoader
   readonly runner: CommandRunner
+  /** Live table of detached chain runs (the run panel's data source). */
+  readonly runs: ChainRunRegistry
   dispose(): void
 }
 
@@ -137,12 +140,25 @@ export function registerTemplateSlashCommands(
           input: { hint: parameterHint(template) },
           handler: async invocation => {
             await runner.ready()
+            const agent = asHostAgent(invocation.agent)
+            // A chain is delegated to detached runs: awaiting it here would hold
+            // the composer's command transaction for the whole pipeline.
+            if (agent?.id && runner.resolve(template.name)?.chain?.length) {
+              const detached = await runner.startDetached(
+                { command: template.name, args: parseCommandArgs(invocation.rawInput) },
+                invocation.signal,
+                agent,
+              )
+              return detached.ok
+                ? { kind: 'success', text: detached.text }
+                : { kind: 'error', text: detached.error }
+            }
             return runTemplateCommand(
               runner,
               template.name,
               invocation.rawInput,
               invocation.signal,
-              asHostAgent(invocation.agent),
+              agent,
             )
           },
         })
@@ -193,7 +209,8 @@ export function startSmartCommands(host: SmartCommandsHost): ActivatedPlugin {
   const loader = new TemplateLoader(dirs)
   void loader.reload()
   loader.startWatching()
-  const runner = new CommandRunner({ host, loader, config })
+  const runs = new ChainRunRegistry()
+  const runner = new CommandRunner({ host, loader, config, runs })
   const disposers: Array<() => void> = []
   if (host.tools) {
     disposers.push(host.tools.register(createRunSmartCommandTool(runner)))
@@ -206,8 +223,12 @@ export function startSmartCommands(host: SmartCommandsHost): ActivatedPlugin {
   return {
     loader,
     runner,
+    runs,
     dispose() {
       loader.stopWatching()
+      // Detached runs outlive their command; unloading the plugin must abort
+      // them instead of leaving orphan pipelines behind.
+      runs.cancelAll()
       for (const dispose of disposers) dispose()
     },
   }

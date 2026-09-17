@@ -111,3 +111,51 @@ describe('chain executor', () => {
     expect(result.steps[1]?.text).not.toContain('huge-report-body')
   })
 })
+
+describe('chain executor progress observer', () => {
+  it('reports one start and one end per step, in order', async () => {
+    const events: string[] = []
+    const bridge = new SubagentBridge({
+      config: DEFAULT_PLUGIN_CONFIG,
+      fallback: async prompt => ({ text: prompt }),
+    })
+    const executor = new ChainExecutor(bridge, DEFAULT_PLUGIN_CONFIG, () => 1)
+
+    await executor.run([
+      { name: 'scan', task: 'scan' },
+      { name: 'fix', parallel: [{ task: 'api' }, { task: 'tests' }], concurrency: 2 },
+    ], {
+      task: 'auth',
+      args: [],
+      depth: 1,
+      signal: new AbortController().signal,
+      maxConcurrency: 2,
+      onStep: event => events.push(`${event.phase}:${event.index}:${event.name}`),
+    })
+
+    expect(events).toEqual(['start:0:scan', 'end:0:scan', 'start:1:fix', 'end:1:fix'])
+  })
+
+  it('reports the failing step and never lets a throwing observer replace the chain error', async () => {
+    const events: string[] = []
+    const bridge = new SubagentBridge({
+      config: DEFAULT_PLUGIN_CONFIG,
+      fallback: async () => { throw new Error('child exploded') },
+    })
+    const executor = new ChainExecutor(bridge, DEFAULT_PLUGIN_CONFIG, () => 1)
+
+    await expect(executor.run([{ name: 'scan', task: 'scan' }], {
+      task: 'auth',
+      args: [],
+      depth: 1,
+      signal: new AbortController().signal,
+      maxConcurrency: 1,
+      onStep: event => {
+        events.push(event.phase === 'end' && event.error ? `end:${event.error}` : event.phase)
+        throw new Error('observer exploded')
+      },
+    })).rejects.toThrow('child exploded')
+
+    expect(events).toEqual(['start', 'end:child exploded'])
+  })
+})
