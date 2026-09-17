@@ -1,230 +1,324 @@
-# @deepseek-ai/dsh-plugin-smart-commands
+# Smart Commands & Chains
 
-DeepSeek Harness 智能指令与链式工作流模板插件。Markdown 模板既是提示词，也是执行策略：模型回退、会话还原、一次性 / 可续聊子代理、工具裁剪、顺序/并行 Chain 与 Git worktree 隔离。
+DeepSeek Harness 智能指令与链式工作流模板插件。
 
-人类斜杠命令由宿主直接触发，**不经过**主会话模型的 Tool Call。
+把一份 Markdown 文件放进目录，它就变成一个可复用的命令 —— **人和模型都能调用**。frontmatter 声明执行策略（模型、子代理、工具权限、多阶段 Chain），正文就是发给模型的提示词。
+
+```
+~/.dsh/commands/*.md            用户级
+‹workspace›/.dsh/commands/*.md  项目级（同名覆盖用户级）
+        │
+        ▼
+  TemplateLoader ──▶ CommandRunner ──┬──▶ /<name>            人类斜杠命令
+                                     ├──▶ smart_command_run  模型工具调用
+                                     └──▶ Web 设置面板 / 输入框菜单
+```
+
+---
+
+## 核心特性
+
+| 能力 | 说明 |
+|---|---|
+| **双调用路径** | 人类用 `/<name>` 直接跑；模型用 `smart_command_run` 工具调用。两者共用同一份模板，互不干扰 |
+| **模型路由** | `model:` 声明候选模型列表，跨 provider 解析；全部不存在时回退到当前会话模型 |
+| **条件渲染** | `<if-model is="...">` 按实际命中的模型切换提示词分支 |
+| **子代理委托** | 一次性子代理、可续聊子代理（`send_message` 续接）、或借用 Persona |
+| **Chain 工作流** | DAG 式多阶段流水线，支持并行步骤、并发上限、`{outputs.name}` 数据传递 |
+| **Git worktree 隔离** | 并行改动在独立 worktree 中进行，避免互相踩踏 |
+| **Web 界面** | 设置面板管理模板与关键词，输入框旁下拉菜单一键注入提示词 |
+
+---
 
 ## 安装
 
-本包是 DSH profile bundle：`package.json` 声明 `dsh.bundle.patch`，`cordis.patch.yml` 把插件插入组合树。官方安装走 `dsh plugin`（在目标 profile 目录里转发给 pnpm，成功后按 `dsh.bundle` 写入 `dsh.profile.bundles`）。
+```sh
+# 从 npm 安装到指定 profile
+dsh plugin --profile <name> add @deepseek-ai/dsh-plugin-smart-commands
 
-本地路径（开发机）：
-
-```bash
-npm install
-npm run build
-dsh plugin --profile web add .
-# 或绝对路径
-dsh plugin --profile web add /path/to/dsh-plugin-smart-commands
+# 从本地源码安装
+dsh plugin --profile <name> add .
 ```
 
-已发布到 registry 后：
+安装后重启该 profile 的 `dsh web` 进程，斜杠命令与 Web 界面即生效。
 
-```bash
-dsh plugin --profile web add @deepseek-ai/dsh-plugin-smart-commands
+---
+
+## 快速上手
+
+创建 `~/.dsh/commands/review.md`：
+
+```markdown
+---
+description: 代码审查
+model: deepseek-reasoner, deepseek-chat
+---
+
+请审查以下变更范围: $@
 ```
 
-`add .` / 相对路径会按调用时的当前目录锚定，不要在 profile 目录里用裸 `.`。源码安装依赖 `prepare` 构建 `dist/`；若 pnpm 拦截生命周期脚本，把包名加进该 profile 的 `pnpm-workspace.yaml` `allowBuilds` 后重跑。
+重启后在会话里输入：
 
-已通过 GUI / `link:` 装上但显示「未声明 dsh.bundle」时，先确认仓库里已有 `dsh.bundle.patch`，再在插件目录重跑一次：
-
-```bash
-dsh plugin --profile web add .
+```
+/review src/engine
 ```
 
-成功后 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 应包含 `@deepseek-ai/dsh-plugin-smart-commands`，然后重启 web。`cordis.patch.yml` 必须是纯 `insert`（只有 `id` / `name`）；`inject` / `config` 会让 dshmarket 热挂载失败，并把插件误报成普通依赖。卸载：`dsh plugin --profile web remove @deepseek-ai/dsh-plugin-smart-commands`。
+或让模型直接调用 `smart_command_run`（`command: "review"`, `args: ["src/engine"]`）。
 
-手工挂载（不走 `dsh plugin`）时，在组合里插入：
+---
+
+## 模板语法
+
+### 目录与优先级
+
+| 层级 | 路径 |
+|---|---|
+| 用户级 | `~/.dsh/commands/**/*.md` |
+| 项目级 | `<workspace>/.dsh/commands/**/*.md` |
+
+**项目级覆盖用户级**（按相对路径同名判断）。若两级目录解析到同一路径（工作区就是 `$HOME`、目录联接、或 Windows 大小写不敏感匹配），只扫描一次并拒绝项目级写入，避免自身覆盖自身。
+
+解析失败的文件**不会**进入目录表，但会在 `smart_command_list` 的 `errors` 字段中报告，便于定位。
+
+### frontmatter 字段
+
+| 字段 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `description` | string | *必填* | 命令描述，展示在 `/smart` 与工具清单中 |
+| `model` | string | — | 逗号分隔的候选模型列表，见[模型路由](#模型路由) |
+| `restore` | boolean | `true` | 仅会话内运行时：结束后恢复原会话模型 |
+| `subagent` | boolean \| string | `false` | 委托模式，见[子代理](#子代理与上下文) |
+| `continuable` | boolean | `false` | 等价于 `subagent: continuable` |
+| `context` | `fresh` \| `fork` | `fresh` | 子代理是否继承当前对话上下文 |
+| `tools` | `{allow, deny}` | — | 子代理工具白/黑名单 |
+| `skills` | string[] | — | 注入的子代理技能 |
+| `chain` | ChainStep[] | — | 多阶段流水线，见 [Chain 工作流](#chain-工作流) |
+| `loop` | integer | `1` | 重复执行轮数，取值 1–99 |
+| `converge` | boolean | `true` | 某一轮无文件改动时提前结束循环 |
+| `worktree` | boolean | `false` | 在独立 git worktree 中执行 |
+
+未知字段会**直接报错**而不是静默忽略，拼写错误不会被埋掉。
+
+### 参数替换
+
+调用时传入的参数按位置替换：
+
+| 语法 | 含义 |
+|---|---|
+| `$1` `$2` … | 第 N 个参数 |
+| `${@:2}` | 从第 2 个开始到末尾 |
+| `${@:2:3}` | 从第 2 个开始取 3 个 |
+| `$@` / `$ARGUMENTS` / `@$` | 全部参数（空格连接） |
+
+参数解析支持单双引号，含空格的参数用引号包裹即可。
+
+### 条件渲染
+
+按**实际命中的模型**切换提示词分支，用于让同一份模板适配不同模型的能力差异：
+
+```markdown
+---
+description: 跨模型代码审查
+model: deepseek-reasoner, deepseek-chat
+---
+请审查以下变更范围: $@
+
+<if-model is="deepseek-reasoner">
+重点关注深层并发隐患、内存泄漏与算法时间复杂度。
+<else>
+重点关注代码规范、变量命名与常见边界缺陷。
+</if-model>
+```
+
+- `is` 属性接受逗号分隔的多个 spec，命中任一即可
+- 必须使用双引号；未知属性、重复属性、空 spec 列表都会报错
+
+### 模型路由
+
+`model:` 是**候选列表**，按顺序在**所有已注册的 provider** 中查找（不限于当前会话 provider），支持三种 spec：
+
+| Spec 形式 | 示例 | 含义 |
+|---|---|---|
+| `id` | `deepseek-chat` | 任意 provider 下的该模型 |
+| `provider/id` | `deepseek/deepseek-chat` | 限定 provider |
+| `provider/*` | `deepseek/*` | 该 provider 下任意模型 |
+
+若列表中的 spec **全部不存在**，命令**回退到当前会话模型**（有意设计，不是解析失败）。
+
+### 子代理与上下文
+
+`subagent` 决定由谁执行：
+
+| 取值 | 行为 |
+|---|---|
+| `false`（默认） | **会话内**运行：渲染后的提示词作为用户消息注入当前会话 |
+| `true` | 一次性子代理，持有独立上下文，完成后释放 |
+| `continuable` | 可续聊子代理，返回 `subagentId`，后续用 `send_message` 续接 |
+| 其他字符串 | 视为 DSH **Persona**（如 `reviewer`），一次性子代理并以该人格运行 |
+
+`context: fork` 让子代理继承当前对话上下文；`fresh`（默认）从零开始。
+
+```markdown
+---
+description: 开一个可续聊的子代理
+subagent: continuable
+context: fresh
+---
+请作为独立助手继续处理：$@
+```
+
+> `subagent` 的字符串取值是 **Persona**，不是 agent-preset。进程内子代理仍沿用父会话的 agent-preset，Persona 只覆盖 `deployment:persona`。
+
+### 工具权限
+
+限制子代理可用的工具，降低越权风险：
 
 ```yaml
-- name: '@deepseek-ai/dsh-plugin-smart-commands'
+tools:
+  allow: ["read", "write", "edit", "grep", "glob", "lsp"]
 ```
 
-入口是 Cordis 函数插件：`name` / `inject` / `apply`，没有 default export。真实 DSH 运行时是 `apply(ctx)`，不是过时指南里的 `activate(ExtensionContext)`。
+### Chain 工作流
 
-## 模板位置
+`chain` 把任务拆成多阶段 DAG。**顺序步骤**与**并行步骤**可混用：
 
-| 层 | 默认路径 | 优先级 |
-| --- | --- | --- |
-| 用户 | `~/.dsh/commands/**/*.md` | 低 |
-| 项目 | `<workspace>/.dsh/commands/**/*.md` | 高，同名覆盖用户模板 |
-
-目录变更通过 `fs.watch` 热重载。非法 YAML 在编译期报错，不会静默降级。
-
-## 人类命令
-
-| 输入 | 行为 |
-| --- | --- |
-| `/smart` | 列出已加载模板，并显示**可输入的斜杠名** |
-| `/<name> [args]` | 宿主直接执行，不经过主模型 Tool Call |
-
-DSH 宿主只接受 `/[a-z][a-z0-9_-]*`。模板文件名会先映射再注册：
-
-| 模板文件 | 可输入命令 |
-| --- | --- |
-| `tel.md` | `/tel` |
-| `001-research.md` | `/research`（去掉前导数字） |
-| `002-code-review.md` | `/code-review` |
-| `review/code.md` | `/review-code` |
-
-`/smart` 只做目录，不执行模板；带参数时会提示改用 `/<name>`。列表里显示的是可输入的斜杠名。模板增删后斜杠命令会同步注册或注销。`/smart` 和 `/help` 是保留名，不会被同名模板覆盖。
-
-## Frontmatter
-
-| 字段 | 默认 | 语义 |
-| --- | --- | --- |
-| `description` | 必填 | 列表与模型可见说明 |
-| `model` | 当前会话模型 | 逗号分隔回退链：`id`、`provider/id`、`provider/*`，见下方「`model:` 合格名与回退链」 |
-| `restore` | `true` | 无子代理且切换了父会话模型时，执行后还原 |
-| `subagent` | `false` | `false` / `true` / `continuable` / Persona 字符串，见下方「Persona」 |
-| `continuable` | `false` | `true` 时走可续聊子代理 |
-| `context` | `fresh` | `fresh` → `spawn`，`fork` → `fork` |
-| `tools` | 全部允许 | `{ allow?, deny? }` |
-| `skills` | — | 注入到委托提示 |
-| `chain` | — | 多步骤流水线；正文可作为 `{task}` |
-| `loop` | — | 1–99 轮 |
-| `converge` | `true` | 一轮未改文件则提前结束 |
-| `worktree` | `false` | 并行步使用临时 Git worktree |
-
-参数：`$1`、`$@` / `$ARGUMENTS`、`${@:N}` / `${@:N:L}`。条件块：`<if-model is="id, provider/*">…<else>…</if-model>`。
-
-Chain 占位符：`{task}`、`{previous}`、`{outputs.name}`。`as` 必须全局唯一，且只能引用更早步骤的输出。
-
-示例见 `examples/`（Persona + 合格名回退链：`examples/persona-review.md`）。把文件复制到 `.dsh/commands/` 或 `~/.dsh/commands/` 即可使用。
-
-### Persona（人设，不是 agent-preset）
-
-`subagent` 一个字段同时决定**谁来执行**和可选的 **Persona**。Persona 是 DSH 子代理的 `persona`：给这一次子代理盖一层 `deployment:persona` 人设。它**不是** agent-preset（`standard` / `code` / 用户复制的组装 id）。进程内子代理仍 **join 父会话的 agent-preset**，因此工具集、插件与提示词跟父会话同一套；Persona 只阴影人设。
-
-| `subagent` / `continuable` | 谁跑 | Persona | 后续消息 |
-| --- | --- | --- | --- |
-| 不写 / `false` | 当前这次对话（渲染后的提示以用户消息投递，命令立即返回） | 无 | — |
-| `true` | 一次性子代理（`ctx.subagents.start()`，跑完 dispose） | 无 | 不支持 |
-| 其它非空字符串（除 `continuable`） | 同上，一次性子代理 | 该字符串 → `start(..., { persona })` | 不支持 |
-| `subagent: continuable` 或 `continuable: true` | 可续聊子代理（`startContinuable()`） | 无（除非另写非 `continuable` 的字符串并配合 `continuable: true`） | 用宿主 `send_message` 发给返回的 `subagentId` |
-
-```yaml
-description: 以 reviewer Persona 做一次性审查
-subagent: reviewer
-model: deepseek/deepseek-reasoner, deepseek/deepseek-chat
-```
-
-Chain 步骤的 `agent:` 与模板级 Persona **同一语义**（`examples/vuln-scan-and-fix.md` 里的 `agent: scout` 就是 Persona，不是 provider 名，也不是 agent-preset）。
-
-会话内执行通过宿主 Agent 的 `followup()` 把模板提示作为一条用户消息投递进会话历史并唤醒主代理回合，命令随即返回（不等待回合结束——等待会让输入框停留在命令声明态并锁死，模型回复以普通助手消息流式显示）。因此后续补充（如「继续」「按方案执行」）会与模板内容同处于模型上下文中。
-
-可续聊示例：`examples/continuable-chat.md`。`/command` 只负责**启动**子代理，返回类似：
-
-```text
-started continuable subagent <subagentId>
-```
-
-之后不要再跑一遍 `/command`。用 DSH 自带的 `send_message` 把后续内容发给这个 id。宿主若没有 `startContinuable`，命令会明确报错，不会静默退化成一次性。
-
-`context` 只决定 spawn / fork，不决定一次性还是可续聊，也不选择 Persona 或 agent-preset。
-
-### `model:` 合格名与回退链
-
-模板级 `model:` 是**逗号分隔的回退链**，按从左到右匹配**所有已注册 provider**（`listProviders` + 各 provider 的 `listModels`），不限于当前会话正在用的那一家。每一段是一个 **model spec**：
-
-| spec | 匹配 |
-| --- | --- |
-| `deepseek-chat` | 任意供应商上 id 等于该值的模型（同名时取清单里第一个） |
-| `deepseek/deepseek-chat` | 指定供应商 + 模型 id |
-| `deepseek/*` | 该供应商下任意已列出的模型 |
-
-规则：
-
-1. 模板没写 `model` → 用当前会话模型（`agent-default-model.provider/model`）。
-2. 写了候选链 → 依次匹配 `provider/id`、裸 id、`provider/*`。
-3. 跨 provider 都找不到 → **回退当前会话模型**。这是有意行为：不会把模板里的无效 id 硬塞给 LLM，命令也不会因此失败。要钉死某一家供应商，写 `provider/id`，并确保该 provider 已注册。
-
-```yaml
-model: deepseek/deepseek-reasoner, deepseek/deepseek-chat
-```
-
-子代理启动时会同时传 `provider` 和 `model`。有 `subagent` 或 `chain` 时，选中的模型给子代理用，默认不改父会话正在聊的模型。
-
-Chain **步骤**上的 `model:` 是**单个字符串**，原样进入子代理的 `agentOptions.model`：没有逗号回退，也不会拆成 `provider` + `id`。要按供应商回退，写在**模板级** `model:`。
-
-```yaml
+```markdown
+---
+description: 先扫描漏洞，再并行修复，最后汇总验证
 chain:
   - name: security_scan
-    agent: scout                 # Persona
-    model: deepseek-chat         # 单段，原样传递
-    task: "全面扫描与 $1 相关的问题"
-    as: vulnerabilities
+    agent: scout
+    model: deepseek-chat
+    task: "全面扫描项目中与 $1 相关的安全漏洞与边界问题"
+    as: "vulnerabilities"
+  - name: parallel_fixes
+    parallel:
+      - agent: backend_fixer
+        task: "根据漏洞清单修复后端 API 缺陷: {outputs.vulnerabilities}"
+      - agent: test_writer
+        task: "为暴露的漏洞编写针对性回归测试用例: {outputs.vulnerabilities}"
+    concurrency: 2
+    worktree: true
+  - name: final_verification
+    agent: reviewer
+    model: deepseek-reasoner
+    task: "汇总评估所有修复方案，输出最终补丁报告。\n前序综合产出:\n{previous}"
+---
 ```
 
-`<if-model is="deepseek-reasoner, deepseek/*">` 按**已经选中的**模型（含 provider）匹配，写法与 spec 相同。
+**顺序步骤字段**：`name` · `agent` · `model` · `task` · `as` · `outputMode`(`inline`\|`file-only`) · `reads` · `tools` · `context`
 
-### 常见误解
+**并行步骤字段**：`name` · `parallel[]` · `concurrency` · `failFast` · `worktree`
 
-| 说法 | 实际 |
-| --- | --- |
-| 「子代理预设 / 预设」 | 本插件里能选的是 **Persona**（`subagent: reviewer` / `agent: scout`）。DSH **agent-preset** 由父会话决定，模板不能换一套组装。 |
-| `model: deepseek-chat` | 裸 id 会在**所有**已注册供应商里找同名模型，不一定是 DeepSeek 那一家。钉供应商请写 `deepseek/deepseek-chat`。 |
-| 写了 `cpa/gemini-...` 却跑到会话模型 | 清单里没有任何候选命中时**有意回退**当前会话模型，不是解析失败。 |
-| 在 chain 步骤写 `model: a, b` 或 `provider/id` | 步骤 `model:` 整段原样当作 `agentOptions.model`，没有逗号回退，也不拆供应商。回退链和 `provider/id` 解析只属于模板级 `model:`。 |
+**并行子任务字段**：`agent` · `model` · `task` · `as` · `tools` · `context`
 
-## 工具
+**数据传递**：
 
-- `smart_command_run` `{ command, args?, overrides? }`
-- `smart_command_list`
-- `smart_command_manage` `{ action: create|update|delete, name, content? }`（只写项目目录）
+- `{outputs.<as>}` — 引用前序步骤中 `as` 命名的产出，**必须指向更早且唯一**的 `as`
+- `{previous}` — 引用前一步骤的综合产出
 
-这三个是给主模型用的 Tool Call。人类命令走上一节的斜杠入口，两者独立。`smart_command_manage` 仍然只写项目目录。
+Chain 步骤的 `model:` 是**单个字符串**（不做 `provider/id` 拆分），直接作为该步骤的模型转发。
 
-## Web 界面集成
+---
 
-插件为 DeepSeek Harness Web GUI 提供了两处客户端扩展：
+## 斜杠命令
 
-### 1. 对话输入栏 Prompt 模板下拉菜单
+| 命令 | 作用 |
+|---|---|
+| `/smart` | 列出全部可用模板（不执行模板） |
+| `/<name>` | 执行对应模板 |
 
-在对话输入框左侧工具栏（`conversation.input.left` 插槽，order 20）注入 Prompt 触发按钮：
-- **实时过滤与检索**：点击展开浮层，按名称、斜杠命令名、描述或标签实时搜索模板。
-- **键盘导航**：支持 `ArrowDown` / `ArrowUp` 切换高亮、`Enter` 选择、`Escape` 快速关闭。
-- **草稿智能插入**：选择模板后自动将对应斜杠命令（或提示词正文）插入输入框草稿区（已有草稿时换行追加），并自动聚焦回输入框。
-- **元数据标签**：清晰标明项目级/用户级来源，以及 subagent / chain 运行模式。
+`/smart` 与 `/help` 为**保留命令**，同名模板不会覆盖它们。
 
-### 2. 独立设置页
+**名称映射**：宿主命令名必须匹配 `^[a-z][a-z0-9_-]*$`，编号/嵌套模板会被自动映射：
 
-Web 设置侧栏有独立的 **智能指令** 页（`settings.section` id `smart-commands`）。浏览器半侧走 `exports["./client"]` + `dsh.client`，通过 Host Remote 命名空间 `smartCommands` 管目录：
+| 文件名 | 斜杠命令 |
+|---|---|
+| `001-research.md` | `/research` |
+| `review/code.md` | `/review-code` |
 
-- 搜索名称 / 斜杠名 / 说明；分段筛选全部或仅 `subagent`。
-- 列表式展示模板；项目模板的标签直接显示其所在工作区目录名（如 `dsh-plugin-smart-commands`），用户模板显示「用户」。
-- 勾选模板后可批量导出为 store 模式的 `smart-commands.zip`（结构为 `user|project/<name>.md`，包含嵌套路径），也可「删除选中」。
-- 导入弹窗：支持拖放或点选 `.md`、导出的 zip 或旧版 JSON，并可显式选择写入 **user**（`~/.dsh/commands`）或当前选中的 **project**（`<workspace>/.dsh/commands`），确认后执行写入。
-- 每次新建/复制也可选择写入 **user** 或 **project**。
-- 运行时仍是「同名 project 覆盖 user」；管理页会把两层都列出来，被覆盖的用户模板带「已被项目覆盖」标记。
+模板增删或热重载时，斜杠命令会同步注册与注销。
 
-此页不执行模板。缺少 `ctx.remote` 时页面降级提示，斜杠命令与模型工具不受影响。改完 client 后重建 `dist/client.js`，必要时 `dsh plugin --profile web add .`，然后刷新现有 Web GUI。
+---
 
-## 配置
+## 模型工具
 
-| 键 | 默认 |
-| --- | --- |
-| `smartCommands.userTemplatesDir` | `~/.dsh/commands` |
-| `smartCommands.projectTemplatesDir` | `.dsh/commands` |
-| `smartCommands.maxChainSteps` | `10` |
-| `smartCommands.maxConcurrency` | `5` |
+| 工具 | 用途 |
+|---|---|
+| `smart_command_run` | 执行模板或 Chain，支持 `overrides` 临时覆盖（model / context / subagent / loop …） |
+| `smart_command_list` | 查询可用模板清单、参数与描述，含解析错误 |
+| `smart_command_manage` | 动态创建 / 更新 / 删除模板 |
 
-插件 `Config` 还可设 `maxDelegationDepth`（默认 3）、`spawnProvider`、`forkProvider`。
+`smart_command_manage` **只写** `<workspace>/.dsh/commands`；用户级目录的写入仅通过设置界面进行。
+
+---
+
+## Web 界面
+
+插件向宿主注册两个 UI 插槽：
+
+| 插槽 | 位置 | 功能 |
+|---|---|---|
+| `settings.section` (`smart-commands`) | 设置页 | 模板目录管理：查看、编辑、复制、导入/导出、删除；关键词分类管理 |
+| `conversation.input.left` (`smart-commands.prompt-trigger`) | 输入框工具栏 | 下拉菜单浏览模板、搜索、注入提示词到草稿，关键词一键追加 |
+
+**导入/导出**：导出把勾选行打包为 zip（`user|project/<name>.md`）；导入支持点击或拖拽 `.md` / zip / JSON，选择目标层级后确认写入。
+
+**关键词**：可复用片段（常用参数、模块路径等），点击即追加到输入框草稿末尾。存储在 `~/.dsh/keywords.json` 与 `<workspace>/.dsh/keywords.json`。
+
+---
+
+## 配置项
+
+在宿主配置中覆盖（均为可选）：
+
+| 配置 | 默认 | 说明 |
+|---|---|---|
+| `smartCommands.userTemplatesDir` | `~/.dsh/commands` | 用户级模板目录 |
+| `smartCommands.projectTemplatesDir` | `.dsh/commands` | 项目级模板目录（相对工作区） |
+| `smartCommands.maxChainSteps` | `10` | 单次 Chain 最大步骤数（防死循环） |
+| `smartCommands.maxConcurrency` | `5` | 并行步骤最大并发数 |
+
+**委派深度**上限为 `maxDelegationDepth`（默认 `3`），超出的嵌套委派会被拒绝。
+
+---
 
 ## 开发
 
-```bash
-npm test
-npm run typecheck
+```sh
+npm install
+npm run typecheck   # 同时检查宿主与 client 两套 tsconfig
+npm test            # vitest
+npm run build       # tsc + 打包 client bundle
 ```
 
-公开 seam：模板加载、模板编译、Chain 校验/执行、子代理桥接（一次性 `start` 与可续聊 `startContinuable`、模型回退）。
+### 目录结构
 
-## 已知限制
+```
+src/
+├── index.ts        Cordis 插件入口（name / inject / apply）
+├── plugin.ts       生命周期：loader + runner + 工具 + 斜杠命令
+├── loader/         双目录目录表、YAML frontmatter 解析、关键词加载
+├── engine/         模板渲染、模型路由、Chain 执行器、子代理桥接、runner
+├── host/           DSH 适配层（subagents / invocation.agent）
+├── tools/          三个模型工具
+├── remote/         契约定义、Typert 网关、设置页目录 API
+└── client/         Web UI 组件（打包为 dist/client.js）
+```
 
-- 工具裁剪依赖宿主 `ctx.subagents` 的 `toolFilter` 能力；本插件不自行调用 `tools.restrict()`。
-- `delegationDepth` 由宿主子代理 seam 在 `start(..., { maxDepth })` 上强制；本插件拒绝超过配置上限的本层再委托。
-- `fork` 只选择 fork provider，父会话快照由该 provider 读取。
-- 模型清单来自宿主 `listProviders` / `listModels`，不做在线鉴权探测。模板级 `model:` 候选全都不在清单里时**有意回退**当前会话模型（不是解析失败，也不会把不合格名硬塞给 LLM）；要钉死供应商请写 `provider/id`。
-- 可续聊子代理的后续消息由宿主 `send_message` 投递，本插件不提供自己的 follow-up 命令。
-- 尚无挂到真实 DSH 组合上的 E2E。
+`src/remote/contract.ts` 是端点契约的**唯一来源**，宿主、`./remote` 与 client `$mount` 三处绑定都从它派生。
+
+### 修改后如何生效
+
+| 改动范围 | 生效方式 |
+|---|---|
+| `src/client/` | `npm run build` 后**刷新**已打开的 `dsh web` 页面（另起 Vite 服务无效） |
+| 其他 `src/` | `npm run build` 后**重启** `dsh web` 进程（宿主从 `dist/*.js` 加载） |
+
+仅刷新浏览器只会重新加载 `dist/client.js`，不会更新宿主侧代码。
+
+---
+
+## 许可
+
+MIT
