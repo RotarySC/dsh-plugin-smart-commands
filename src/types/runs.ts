@@ -46,6 +46,14 @@ export interface ChainRunStartInput {
   readonly stepNames: readonly string[]
   /** `loop:` count; defaults to 1. */
   readonly rounds?: number
+  /**
+   * Called once with the terminal snapshot when the run ends — settled by its
+   * own work, or cancelled through the run panel. Deliberately NOT called for a
+   * disposal cancel ({@link ChainRunRegistry.cancelAll}): unloading the plugin is
+   * teardown, and every live run reporting at once would only inject noise into
+   * the sessions it is trying to leave. A throwing observer never affects the run.
+   */
+  readonly onSettled?: (run: ChainRunRecord) => void
 }
 
 export interface ChainRunListFilter {

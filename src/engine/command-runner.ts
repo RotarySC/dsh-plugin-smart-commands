@@ -10,8 +10,9 @@ import { loadAvailableModels } from '../host/dsh-adapter.js'
 import { slashCommandNameFor } from './slash-name.js'
 import { ChainExecutor } from './chain-executor.js'
 import { ChainRunRegistry } from './run-registry.js'
+import { formatRunSummary } from './run-summary.js'
 import { SubagentBridge } from './subagent-bridge.js'
-import type { ChainStepProgress } from '../types/runs.js'
+import type { ChainRunRecord, ChainStepProgress } from '../types/runs.js'
 
 const COMMAND_NAME_PATTERN = TEMPLATE_NAME_PATTERN
 
@@ -307,6 +308,7 @@ export class CommandRunner {
       workspaceRoot: this.options.host.workspaceRoot,
       stepNames: steps.map(step => step.name),
       rounds: template.loop ?? 1,
+      onSettled: record => { this.reportSettled(record, parent) },
     })
     // The command transaction's own signal still fires while the handler is
     // pending (connection loss, teardown before settlement); afterwards the run
@@ -385,6 +387,29 @@ export class CommandRunner {
     runs.stepFinished(runId, event.index, event.error
       ? { status: 'failed', error: event.error }
       : { status: 'done' })
+  }
+
+  /**
+   * Post a settled run's report back into its own session.
+   *
+   * Without it the run is a dead end twice over: the aggregate text would only
+   * ever exist in the run panel's retention window, and a session whose first
+   * input was a slash command ends up with no `turn/start` at all — which is the
+   * flag the sidebar reads to keep a session visible. `notifyOnRunSettle` buys
+   * this back at the price of one main-agent turn, which is the whole reason it
+   * is a setting.
+   *
+   * Reporting is advice, not a result: a run that has already settled must never
+   * be turned into a failure by the message that describes it.
+   */
+  private reportSettled(record: ChainRunRecord, parent: HostAgent): void {
+    if (!this.options.config.notifyOnRunSettle) return
+    if (!parent.notify) return
+    try {
+      parent.notify(formatRunSummary(record))
+    } catch {
+      // Advisory, exactly like the step-progress observer.
+    }
   }
 
   private now(): number {

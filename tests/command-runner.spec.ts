@@ -7,7 +7,7 @@ import { ChainRunRegistry } from '../src/engine/run-registry.ts'
 import { activateSmartCommands } from '../src/plugin.ts'
 import { TemplateLoader } from '../src/loader/template-loader.ts'
 import { wrapDshSubagents } from '../src/host/dsh-adapter.ts'
-import { DEFAULT_PLUGIN_CONFIG, type HostAgent, type HostToolDefinition, type SmartCommandsHost } from '../src/types/host.ts'
+import { DEFAULT_PLUGIN_CONFIG, type HostAgent, type HostToolDefinition, type PluginConfig, type SmartCommandsHost } from '../src/types/host.ts'
 
 const simple = `---
 description: Review one file
@@ -39,6 +39,7 @@ describe('command runner and tools', () => {
 
   async function workspace(overrides: {
     subagentStart?: (request: { prompt: string }) => Promise<{ text: string; stopReason: string; changedFiles: string[] }>
+    config?: Partial<PluginConfig>
   } = {}): Promise<{
     root: string
     loader: TemplateLoader
@@ -71,7 +72,7 @@ describe('command runner and tools', () => {
     const host: SmartCommandsHost = {
       workspaceRoot: root,
       userHome: root,
-      config: DEFAULT_PLUGIN_CONFIG,
+      config: { ...DEFAULT_PLUGIN_CONFIG, ...overrides.config },
       modelRegistry: {
         current: { id: 'deepseek-chat' },
         available: [{ id: 'deepseek-reasoner' }],
@@ -87,7 +88,12 @@ describe('command runner and tools', () => {
       },
     }
     const runs = new ChainRunRegistry()
-    const runner = new CommandRunner({ host, loader, config: DEFAULT_PLUGIN_CONFIG, runs })
+    const runner = new CommandRunner({
+      host,
+      loader,
+      config: { ...DEFAULT_PLUGIN_CONFIG, ...overrides.config },
+      runs,
+    })
     return { root, loader, runner, runs, session }
   }
 
@@ -685,5 +691,77 @@ Talk about $@
 
     expect(result).toMatchObject({ ok: false, error: 'unknown smart command: nope' })
     expect(runs.list()).toEqual([])
+  })
+
+  it('reports a settled detached run back into its session', async () => {
+    const { runner } = await workspace()
+    const notices: string[] = []
+    const result = await runner.startDetached(
+      { command: 'pipeline', args: ['auth'] },
+      new AbortController().signal,
+      { id: 'session-1', original: {}, notify: text => { notices.push(text) } },
+    )
+
+    expect(result.ok).toBe(true)
+    await vi.waitFor(() => { expect(notices).toHaveLength(1) })
+    expect(notices[0]).toContain('smart command pipeline: succeeded')
+    expect(notices[0]).toContain('(2/2 steps)')
+    expect(notices[0]).toContain('Final output:')
+    expect(notices[0]).toContain('child:')
+  })
+
+  it('reports a cancelled detached run in its session', async () => {
+    const { runner, runs } = await workspace({ subagentStart: () => new Promise(() => {}) })
+    const notices: string[] = []
+    await runner.startDetached(
+      { command: 'pipeline' },
+      new AbortController().signal,
+      { id: 'session-1', original: {}, notify: text => { notices.push(text) } },
+    )
+
+    const run = runs.list()[0]!
+    expect(runs.cancel(run.id, 'session-1')).toEqual({ ok: true, runId: run.id })
+
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toContain('smart command pipeline: cancelled')
+    expect(notices[0]).toContain('(0/2 steps)')
+  })
+
+  it('reports nothing when reporting is switched off', async () => {
+    const { runner, runs } = await workspace({ config: { notifyOnRunSettle: false } })
+    const notices: string[] = []
+    await runner.startDetached(
+      { command: 'pipeline' },
+      new AbortController().signal,
+      { id: 'session-1', original: {}, notify: text => { notices.push(text) } },
+    )
+
+    await vi.waitFor(() => { expect(runs.list()[0]!.status).toBe('succeeded') })
+    expect(notices).toEqual([])
+  })
+
+  it('keeps the blocking path silent so only detached runs report', async () => {
+    const { runner } = await workspace()
+    const notices: string[] = []
+    const result = await runner.startDetached(
+      { command: 'review', args: ['auth.ts'] },
+      new AbortController().signal,
+      { id: 'session-1', original: {}, notify: text => { notices.push(text) } },
+    )
+
+    expect(result.ok).toBe(true)
+    expect(notices).toEqual([])
+  })
+
+  it('never lets a throwing report reach the run', async () => {
+    const { runner, runs } = await workspace()
+    const result = await runner.startDetached(
+      { command: 'pipeline' },
+      new AbortController().signal,
+      { id: 'session-1', original: {}, notify: () => { throw new Error('report channel is broken') } },
+    )
+
+    expect(result.ok).toBe(true)
+    await vi.waitFor(() => { expect(runs.list()[0]!.status).toBe('succeeded') })
   })
 })

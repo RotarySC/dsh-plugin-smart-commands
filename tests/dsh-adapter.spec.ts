@@ -125,6 +125,42 @@ describe('DSH agent adapter', () => {
     expect(agent?.id).toBe('session-1')
     expect(agent?.options).toEqual({ provider: 'p', model: 'm' })
     expect(agent?.submit).toBeUndefined()
+    expect(agent?.notify).toBeUndefined()
+  })
+
+  it('posts a plugin notice for a report the plugin produced itself', () => {
+    const followed: unknown[] = []
+    const agent = asHostAgent({ id: 'session-1', followup: (message: unknown) => { followed.push(message) } })!
+
+    agent.notify?.('smart command pipeline: cancelled in 7.0s (1/3 steps)\n\nSteps:\n- 1. scan: done (1.0s)')
+
+    expect(followed).toHaveLength(1)
+    const message = followed[0] as { id: string; role: string; content: unknown[]; source: Record<string, unknown> }
+    expect(message.role).toBe('user')
+    // Honest provenance: the transcript renders this as a smart-commands context
+    // row, not as something the user typed.
+    expect(message.source).toEqual({
+      kind: 'plugin',
+      plugin: 'smart-commands',
+      form: 'notice',
+      summary: 'smart command pipeline: cancelled in 7.0s (1/3 steps)',
+    })
+    expect(message.content).toEqual([{
+      type: 'text',
+      text: 'smart command pipeline: cancelled in 7.0s (1/3 steps)\n\nSteps:\n- 1. scan: done (1.0s)',
+    }])
+    expect(typeof message.id).toBe('string')
+  })
+
+  it('bounds the notice summary to the length DSH accepts', () => {
+    const followed: unknown[] = []
+    const agent = asHostAgent({ id: 'session-1', followup: (message: unknown) => { followed.push(message) } })!
+
+    agent.notify?.(`smart command ${'x'.repeat(400)}: succeeded`)
+
+    const source = (followed[0] as { source: { summary: string } }).source
+    expect(source.summary).toHaveLength(120)
+    expect(source.summary.endsWith('…')).toBe(true)
   })
 
   it('returns undefined for non-agent values', () => {

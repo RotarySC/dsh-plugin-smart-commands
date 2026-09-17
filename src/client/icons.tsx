@@ -27,6 +27,31 @@ export function ChevronDownIcon({ className }: { className?: string }): ReactNod
 }
 
 /**
+ * Standard 14x14 Close / X Outline SVG for dismissing one row.
+ */
+export function CloseIcon({ className }: { className?: string }): ReactNode {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    >
+      <path
+        d="M4.25 4.25L9.75 9.75M9.75 4.25L4.25 9.75"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/**
  * Nerd Font Prompt / Terminal / Message Icon
  * Standard Prompt / Terminal glyph 󰞋 / 󰘳 or Terminal Prompt SVG
  */

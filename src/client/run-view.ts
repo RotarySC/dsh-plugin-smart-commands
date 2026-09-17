@@ -1,15 +1,14 @@
 import type { ChainRunRecord, ChainRunStep } from '../types/runs.js'
 
 /**
- * How long a settled run stays visible in the dock after it ends.
+ * How long a settled run stays visible in the dock before it clears itself.
  *
- * Matches the host's default retention window (`ChainRunRegistry`
- * `finishedTtlMs`, 10 minutes / 20 runs) on purpose: a detached chain no longer
- * returns its aggregate text as the command result, so the panel is where the
- * outcome lives — hiding it earlier would lose the result. The panel is
- * collapsible, so a lingering row costs one header line.
+ * A detached chain no longer returns its aggregate text as the command result,
+ * so the panel is where the outcome lives — which is why a row the user opened
+ * ("pinned") stays until it is dismissed, while an unopened one clears itself
+ * after this window instead of lingering over the composer.
  */
-export const FINISHED_VISIBLE_MS = 10 * 60_000
+export const FINISHED_VISIBLE_MS = 90_000
 
 /** Terminal step states count as done for progress purposes. */
 const SETTLED_STEPS = new Set(['done', 'failed', 'skipped'])
@@ -52,25 +51,33 @@ export function elapsedMs(run: ChainRunRecord, now: number): number {
   return Math.max(0, (run.endedAt ?? now) - run.startedAt)
 }
 
-/** Compact human duration: `840ms`, `12.3s`, `3m 05s`. */
-export function formatDuration(ms: number): string {
-  if (ms < 1_000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`
-  const minutes = Math.floor(ms / 60_000)
-  const seconds = Math.round((ms % 60_000) / 1_000)
-  return `${minutes}m ${String(seconds).padStart(2, '0')}s`
+export interface RunRosterOptions {
+  /** Window a settled, unopened run stays visible; defaults to {@link FINISHED_VISIBLE_MS}. */
+  readonly ttl?: number
+  /** Rows the user closed. */
+  readonly dismissed?: ReadonlySet<string>
+  /** Rows the user opened; kept past the TTL until dismissed. */
+  readonly pinned?: ReadonlySet<string>
 }
 
 /**
- * The dock's roster: every live run plus settled runs that ended within `ttl`.
- * Order is the host's (live oldest-first, then most recently settled).
+ * The dock's roster: every live run, every settled run inside the window (or
+ * pinned open), minus the rows the user dismissed. Order is the host's (live
+ * oldest-first, then most recently settled).
  */
 export function visibleRuns(
   runs: readonly ChainRunRecord[],
   now: number,
-  ttl: number = FINISHED_VISIBLE_MS,
+  options: RunRosterOptions = {},
 ): ChainRunRecord[] {
-  return runs.filter(run => isLive(run) || (run.endedAt !== undefined && now - run.endedAt <= ttl))
+  const ttl = options.ttl ?? FINISHED_VISIBLE_MS
+  return runs.filter(run => {
+    // A live run is never hidden: it owns the only cancel control.
+    if (isLive(run)) return true
+    if (options.dismissed?.has(run.id) === true) return false
+    if (options.pinned?.has(run.id) === true) return true
+    return run.endedAt !== undefined && now - run.endedAt <= ttl
+  })
 }
 
 /** Ids worth cancelling from one roster snapshot. */

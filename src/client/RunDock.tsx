@@ -3,9 +3,10 @@ import type { ChainRunRecord, ChainRunScope, ChainRunStatus } from '../types/run
 import type { SmartCommandsRemote } from './SmartCommandsSection.js'
 import type { SmartCommandsLocaleKey } from './locales.js'
 import { getActiveSmartCommandsConnect } from './connect.js'
-import { ChevronDownIcon } from './icons.js'
+import { ChevronDownIcon, CloseIcon } from './icons.js'
 import { RUN_DOCK_CSS } from './run-dock.css.js'
-import { currentStep, elapsedMs, formatDuration, isLive, runProgress, visibleRuns } from './run-view.js'
+import { formatDuration } from '../run-format.js'
+import { currentStep, elapsedMs, isLive, runProgress, visibleRuns } from './run-view.js'
 
 const STYLE_ID = '@deepseek-ai/dsh-plugin-smart-commands/run-dock.css'
 /** A live run refreshes every second so its elapsed clock and step tick. */
@@ -82,6 +83,7 @@ export function RunDock(props: RunDockProps): ReactNode {
   const [now, setNow] = useState(() => Date.now())
   const [collapsed, setCollapsed] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set())
 
   const connectRef = useRef(connect)
   useEffect(() => {
@@ -143,7 +145,16 @@ export function RunDock(props: RunDockProps): ReactNode {
       : run))
   }, [api, activeSessionId])
 
-  const roster = visibleRuns(runs, now)
+  const dismiss = useCallback((id: string): void => {
+    // Local-only by design: the host keeps the row (and its result) until its
+    // own retention window expires, so a refresh can still bring it back.
+    setDismissed(previous => new Set(previous).add(id))
+  }, [])
+
+  // A row the user opened stays put until dismissed; an unopened settled row
+  // clears itself after FINISHED_VISIBLE_MS.
+  const pinned = new Set(Object.keys(expanded).filter(id => expanded[id] === true))
+  const roster = visibleRuns(runs, now, { dismissed, pinned })
   if (roster.length === 0) return null
 
   const liveCount = roster.filter(isLive).length
@@ -169,43 +180,61 @@ export function RunDock(props: RunDockProps): ReactNode {
             const open = expanded[run.id] === true
             const position = progress.total === 0
               ? undefined
-              : `${t('runStepLabel')} ${Math.min(progress.done + 1, progress.total)}/${progress.total}${step ? ` · ${step.name}` : ''}`
+              : `${Math.min(progress.done + 1, progress.total)}/${progress.total}${step ? ` · ${step.name}` : ''}`
             const round = run.rounds > 1
               ? `${t('runRoundLabel')} ${run.round}/${run.rounds}`
               : undefined
             const phase = [round, position].filter(Boolean).join(' · ')
+            const phaseLabel = [
+              round,
+              progress.total === 0 ? undefined : `${t('runStepLabel')} ${Math.min(progress.done + 1, progress.total)}`,
+              step?.name,
+            ].filter(Boolean).join(' · ')
             return (
               <div key={run.id} className="sc-run-row" data-status={run.status}>
                 <div className="sc-run-line">
                   <span className="sc-run-name" title={run.command}>{run.command}</span>
                   <span className="sc-run-status">{statusText(t, run.status)}</span>
                   {phase !== '' && (
-                    <span className="sc-run-phase" {...live ? { 'aria-live': 'polite' as const } : {}}>{phase}</span>
+                    <span
+                      className="sc-run-phase"
+                      title={phaseLabel}
+                      {...live ? { 'aria-live': 'polite' as const } : {}}
+                    >
+                      {phase}
+                    </span>
                   )}
                   <span className="sc-run-time">{formatDuration(elapsedMs(run, now))}</span>
-                  {live
-                    ? (
-                      <button
-                        type="button"
-                        className="sc-run-button"
-                        aria-label={`${t('cancel')} ${run.command}`}
-                        onClick={() => { void cancel(run.id) }}
-                      >
-                        {t('cancel')}
-                      </button>
-                      )
-                    : detail
-                      ? (
-                        <button
-                          type="button"
-                          className="sc-run-button"
-                          aria-expanded={open}
-                          onClick={() => setExpanded(previous => ({ ...previous, [run.id]: !open }))}
-                        >
-                          {open ? t('runCollapse') : t('runExpand')}
-                        </button>
-                        )
-                      : null}
+                  {live && (
+                    <button
+                      type="button"
+                      className="sc-run-button"
+                      aria-label={`${t('cancel')} ${run.command}`}
+                      onClick={() => { void cancel(run.id) }}
+                    >
+                      {t('cancel')}
+                    </button>
+                  )}
+                  {!live && detail && (
+                    <button
+                      type="button"
+                      className="sc-run-button"
+                      aria-expanded={open}
+                      onClick={() => setExpanded(previous => ({ ...previous, [run.id]: !open }))}
+                    >
+                      {open ? t('runCollapse') : t('runExpand')}
+                    </button>
+                  )}
+                  {!live && (
+                    <button
+                      type="button"
+                      className="sc-run-close"
+                      aria-label={`${t('runDismiss')} ${run.command}`}
+                      onClick={() => dismiss(run.id)}
+                    >
+                      <CloseIcon />
+                    </button>
+                  )}
                 </div>
                 <div
                   className="sc-run-bar"

@@ -117,6 +117,33 @@ interface DshAgentLike {
 }
 
 /**
+ * Bound DSH applies to a `notice` source summary (`CONTEXT_SUMMARY_MAX_CHARS`).
+ * The row renders this line without expanding, so an over-long one is ellipsized
+ * by the host anyway — bounding it here keeps the stored source honest.
+ */
+const NOTICE_SUMMARY_MAX_CHARS = 120
+
+/** The plugin's own name in message provenance, shared with `package.json`. */
+const PLUGIN_NAME = 'smart-commands'
+
+function enqueue(agent: DshAgentLike, text: string, source: Record<string, unknown>): void {
+  agent.followup!({
+    id: randomUUID(),
+    role: 'user',
+    content: [{ type: 'text', text }],
+    source,
+  })
+}
+
+function noticeSummary(text: string): string {
+  const [first = ''] = text.split('\n')
+  const summary = first.trim()
+  return summary.length <= NOTICE_SUMMARY_MAX_CHARS
+    ? summary
+    : `${summary.slice(0, NOTICE_SUMMARY_MAX_CHARS - 1)}…`
+}
+
+/**
  * Queue `prompt` as one model-visible user message and return immediately.
  * Deliberately does NOT `await whenIdle()`: the composer keeps the slash-claim
  * in the input and locks editing for the whole `commands.execute` transaction,
@@ -125,22 +152,35 @@ interface DshAgentLike {
  * assistant message; the `text` of a fire-and-forget submission is empty.
  */
 async function submitMainAgentTurn(agent: DshAgentLike, prompt: string): Promise<HostTurnResult> {
-  agent.followup!({
-    id: randomUUID(),
-    role: 'user',
-    content: [{ type: 'text', text: prompt }],
-    source: { kind: 'user' },
-  })
+  enqueue(agent, prompt, { kind: 'user' })
   return { text: '' }
 }
 
 /**
+ * Queue a report the plugin produced itself.
+ *
+ * `kind: 'plugin'` is the honest provenance and the reason this is not folded
+ * into {@link submitMainAgentTurn}: the transcript renders it as an injected
+ * context row labeled `smart-commands` rather than as a user bubble, and
+ * `form: 'notice'` (the same shape `dsh-plan-mode` uses for its own narration)
+ * gives that row a one-line account the user reads without expanding it.
+ */
+function notifyMainAgent(agent: DshAgentLike, text: string): void {
+  enqueue(agent, text, {
+    kind: 'plugin',
+    plugin: PLUGIN_NAME,
+    form: 'notice',
+    summary: noticeSummary(text),
+  })
+}
+
+/**
  * Adapt a DSH `Agent` (as received on `invocation.agent` / `exec.agent`) into
- * the plugin's {@link HostAgent}. `submit` is only attached when the agent can
- * actually queue turn input (`followup`); hosts that only echo the rendered
- * prompt to the caller (model-facing `smart_command_run`) must keep passing the
- * raw agent so `submit` stays absent — submitting into the caller's own running
- * turn would deadlock the loop.
+ * the plugin's {@link HostAgent}. `submit` and `notify` are only attached when
+ * the agent can actually queue turn input (`followup`); hosts that only echo the
+ * rendered prompt to the caller (model-facing `smart_command_run`) must keep
+ * passing the raw agent so both stay absent — submitting into the caller's own
+ * running turn would deadlock the loop.
  */
 export function asHostAgent(raw: unknown): HostAgent | undefined {
   if (!raw || typeof raw !== 'object') return undefined
@@ -154,6 +194,7 @@ export function asHostAgent(raw: unknown): HostAgent | undefined {
       : {},
     ...typeof agent.followup === 'function'
       ? {
+          notify: (text: string) => { notifyMainAgent(agent, text) },
           submit: (prompt: string, signal: AbortSignal) => {
             if (signal.aborted) return Promise.reject(new Error('Operation cancelled by user'))
             return submitMainAgentTurn(agent, prompt)

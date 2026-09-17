@@ -4,10 +4,10 @@ export const RUN_DOCK_CSS = `
   width: 100%;
   background: var(--dsw-specific-input-major, rgba(127, 127, 127, 0.08));
   border: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.24));
-  border-radius: 12px;
-  padding: 6px 8px 8px;
-  font-size: 12px;
-  line-height: 18px;
+  border-radius: 10px;
+  padding: 4px 6px 6px;
+  font-size: 11px;
+  line-height: 16px;
   font-family: inherit;
   color: var(--dsw-alias-label-primary, inherit);
 }
@@ -16,13 +16,13 @@ export const RUN_DOCK_CSS = `
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 24px;
+  min-height: 20px;
   background: transparent;
   border: none;
   cursor: pointer;
   padding: 0 2px;
   color: var(--dsw-alias-label-secondary, inherit);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   font-family: inherit;
   width: 100%;
@@ -61,16 +61,16 @@ export const RUN_DOCK_CSS = `
 .sc-run-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 4px;
+  gap: 4px;
+  margin-top: 3px;
 }
 
 .sc-run-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px 8px;
-  border-radius: 8px;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 7px;
   background: var(--dsw-alias-bg-base, rgba(127, 127, 127, 0.06));
   box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.2));
 }
@@ -78,7 +78,7 @@ export const RUN_DOCK_CSS = `
 .sc-run-line {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -133,7 +133,7 @@ export const RUN_DOCK_CSS = `
 }
 
 .sc-run-bar {
-  height: 3px;
+  height: 2px;
   border-radius: 2px;
   overflow: hidden;
   background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.16));
@@ -157,9 +157,9 @@ export const RUN_DOCK_CSS = `
 
 .sc-run-button {
   flex: none;
-  height: 22px;
-  padding: 0 10px;
-  border-radius: 11px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
   border: 0.5px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.28));
   background: transparent;
   color: var(--dsw-alias-label-secondary, inherit);
@@ -174,6 +174,31 @@ export const RUN_DOCK_CSS = `
 }
 
 .sc-run-button:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-tertiary, #8b949e);
+  outline-offset: 1px;
+}
+
+.sc-run-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary, #8b949e);
+  cursor: pointer;
+}
+
+.sc-run-close:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+
+.sc-run-close:focus-visible {
   outline: 2px solid var(--dsw-alias-label-tertiary, #8b949e);
   outline-offset: 1px;
 }

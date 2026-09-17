@@ -130,6 +130,11 @@
           "type": "number",
           "default": 5,
           "description": "并行步骤的最大并发子任务数"
+        },
+        "smartCommands.notifyOnRunSettle": {
+          "type": "boolean",
+          "default": true,
+          "description": "Chain 分离运行结束后向发起会话回投一条运行汇总（会附带一轮主代理回复，关闭可省下该轮）"
         }
       }
     }

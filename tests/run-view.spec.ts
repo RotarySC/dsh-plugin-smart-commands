@@ -4,7 +4,6 @@ import {
   FINISHED_VISIBLE_MS,
   currentStep,
   elapsedMs,
-  formatDuration,
   isLive,
   liveRunIds,
   runProgress,
@@ -66,12 +65,6 @@ describe('run progress', () => {
 })
 
 describe('run timing', () => {
-  it('formats millisecond, second, and minute durations', () => {
-    expect(formatDuration(840)).toBe('840ms')
-    expect(formatDuration(12_340)).toBe('12.3s')
-    expect(formatDuration(185_000)).toBe('3m 05s')
-  })
-
   it('measures a live run against the clock and a settled run against its end', () => {
     expect(elapsedMs(run(), 3_500)).toBe(2_500)
     expect(elapsedMs(run({ status: 'succeeded', endedAt: 4_000 }), 9_999)).toBe(3_000)
@@ -93,8 +86,21 @@ describe('run roster', () => {
   it('honours a custom visibility window', () => {
     const now = 10_000
     const settled = run({ status: 'cancelled', endedAt: now - 500 })
-    expect(visibleRuns([settled], now, 100)).toEqual([])
-    expect(visibleRuns([settled], now, 1_000)).toHaveLength(1)
+    expect(visibleRuns([settled], now, { ttl: 100 })).toEqual([])
+    expect(visibleRuns([settled], now, { ttl: 1_000 })).toHaveLength(1)
+  })
+
+  it('hides dismissed rows, keeps pinned rows past the window, and never hides a live run', () => {
+    const now = 100_000
+    const stale = run({ id: 'stale', status: 'succeeded', endedAt: now - FINISHED_VISIBLE_MS - 1 })
+    const fresh = run({ id: 'fresh', status: 'succeeded', endedAt: now - 1_000 })
+
+    expect(visibleRuns([fresh], now, { dismissed: new Set(['fresh']) })).toEqual([])
+    expect(visibleRuns([fresh], now)).toHaveLength(1)
+    expect(visibleRuns([stale], now, { pinned: new Set(['stale']) }).map(item => item.id)).toEqual(['stale'])
+    expect(visibleRuns([stale], now, { dismissed: new Set(['stale']), pinned: new Set(['stale']) })).toEqual([])
+    // A live run owns the only cancel control, so dismissal cannot hide it.
+    expect(visibleRuns([run({ id: 'live' })], now, { dismissed: new Set(['live']) })).toHaveLength(1)
   })
 
   it('drops settled runs that report no end time', () => {

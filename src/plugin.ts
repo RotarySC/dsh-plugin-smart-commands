@@ -37,6 +37,9 @@ function readConfig(host: Partial<SmartCommandsHost> | undefined): PluginConfig 
     maxDelegationDepth: host?.config?.maxDelegationDepth ?? DEFAULT_PLUGIN_CONFIG.maxDelegationDepth,
     spawnProvider: host?.config?.spawnProvider ?? DEFAULT_PLUGIN_CONFIG.spawnProvider,
     forkProvider: host?.config?.forkProvider ?? DEFAULT_PLUGIN_CONFIG.forkProvider,
+    notifyOnRunSettle: configuration?.get('smartCommands.notifyOnRunSettle', DEFAULT_PLUGIN_CONFIG.notifyOnRunSettle)
+      ?? host?.config?.notifyOnRunSettle
+      ?? DEFAULT_PLUGIN_CONFIG.notifyOnRunSettle,
   }
 }
 

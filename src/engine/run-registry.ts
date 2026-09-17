@@ -32,6 +32,7 @@ interface MutableRun {
   files: string[]
   text: string | undefined
   error: string | undefined
+  readonly onSettled: ((run: ChainRunRecord) => void) | undefined
   readonly controller: AbortController
 }
 
@@ -87,6 +88,7 @@ export class ChainRunRegistry {
       files: [],
       text: undefined,
       error: undefined,
+      onSettled: input.onSettled,
       controller: new AbortController(),
     }
     this.runs.set(id, run)
@@ -126,9 +128,8 @@ export class ChainRunRegistry {
     if (outcome.files) run.files = [...outcome.files]
     run.status = outcome.status
     run.endedAt = this.now()
-    run.steps = run.steps.map(step =>
-      step.status === 'running' ? { ...step, status: 'skipped' as ChainRunStepStatus, endedAt: run.endedAt } : step,
-    )
+    this.settleSteps(run)
+    this.notifySettled(run)
   }
 
   get(id: string): ChainRunRecord | undefined {
@@ -168,17 +169,26 @@ export class ChainRunRegistry {
     if (run.status !== 'running') return { ok: false, error: `run already ${run.status}` }
     run.status = 'cancelled'
     run.endedAt = this.now()
+    this.settleSteps(run)
     run.controller.abort()
+    this.notifySettled(run)
     return { ok: true, runId: id }
   }
 
-  /** Abort every live run (plugin disposal). @returns how many were cancelled. */
+  /**
+   * Abort every live run (plugin disposal). @returns how many were cancelled.
+   *
+   * Silent by design: {@link ChainRunStartInput.onSettled} is not invoked, because
+   * disposal terminates every run at once and each report would wake a session
+   * turn the plugin is being unloaded out from under.
+   */
   cancelAll(): number {
     let cancelled = 0
     for (const run of [...this.runs.values()]) {
       if (run.status !== 'running') continue
       run.status = 'cancelled'
       run.endedAt = this.now()
+      this.settleSteps(run)
       run.controller.abort()
       cancelled += 1
     }
@@ -191,6 +201,24 @@ export class ChainRunRegistry {
     const step = run.steps[index]
     if (!step) return
     run.steps[index] = { ...step, ...patch, name: step.name, index: step.index }
+  }
+
+  /** A terminal run's interrupted step is settled, never left looking live. */
+  private settleSteps(run: MutableRun): void {
+    const endedAt = run.endedAt ?? this.now()
+    run.steps = run.steps.map(step =>
+      step.status === 'running' ? { ...step, status: 'skipped' as ChainRunStepStatus, endedAt } : step,
+    )
+  }
+
+  private notifySettled(run: MutableRun): void {
+    if (!run.onSettled) return
+    try {
+      run.onSettled(snapshotOf(run))
+    } catch {
+      // A settle observer is advisory, exactly like a progress observer: the run
+      // is terminal either way, and its report must never surface as a failure.
+    }
   }
 
   private prune(): void {

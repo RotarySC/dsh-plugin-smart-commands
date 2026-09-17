@@ -93,6 +93,7 @@ export const zh = {
   runRoundLabel: '轮次',
   runExpand: '结果',
   runCollapse: '收起',
+  runDismiss: '关闭',
   runFiles: '变更文件',
 }
 
@@ -193,5 +194,6 @@ export const en: Record<SmartCommandsLocaleKey, string> = {
   runRoundLabel: 'Round',
   runExpand: 'Result',
   runCollapse: 'Hide',
+  runDismiss: 'Dismiss',
   runFiles: 'Changed files',
 }

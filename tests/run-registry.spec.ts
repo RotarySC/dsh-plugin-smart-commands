@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ChainRunRegistry } from '../src/engine/run-registry.js'
+import type { ChainRunRecord } from '../src/types/runs.js'
 
 function harness(options: { retainFinished?: number; finishedTtlMs?: number } = {}) {
   let clock = 1_000
@@ -236,6 +237,60 @@ describe('ChainRunRegistry', () => {
     expect(before.status).toBe('running')
     expect(before.steps[0]!.status).toBe('pending')
     expect(before.files).toEqual([])
+    expect(registry.get(handle.id)!.status).toBe('succeeded')
+  })
+
+  it('reports a settled run to its observer exactly once', () => {
+    const { registry } = harness()
+    const settled: ChainRunRecord[] = []
+    const handle = registry.start({
+      command: 'pipeline',
+      sessionId: 's1',
+      workspaceRoot: '/ws',
+      stepNames: ['scan'],
+      onSettled: run => { settled.push(run) },
+    })
+
+    registry.finish(handle.id, { status: 'succeeded', text: 'all good' })
+    registry.finish(handle.id, { status: 'failed', error: 'too late' })
+    registry.cancel(handle.id)
+
+    expect(settled).toHaveLength(1)
+    expect(settled[0]).toMatchObject({ status: 'succeeded', text: 'all good' })
+  })
+
+  it('reports a cancelled run, but stays silent when disposal cancels', () => {
+    const { registry } = harness()
+    const settled: ChainRunRecord[] = []
+    const observe = (run: ChainRunRecord): void => { settled.push(run) }
+    const cancelled = registry.start({
+      command: 'a', sessionId: 's1', workspaceRoot: '/ws', stepNames: ['scan'], onSettled: observe,
+    })
+    registry.start({
+      command: 'b', sessionId: 's1', workspaceRoot: '/ws', stepNames: ['scan'], onSettled: observe,
+    })
+    registry.stepStarted(cancelled.id, 0)
+
+    registry.cancel(cancelled.id, 's1')
+    expect(settled.map(run => run.status)).toEqual(['cancelled'])
+    // The interrupted step is settled with the run, never left looking live.
+    expect(settled[0]!.steps[0]!.status).toBe('skipped')
+
+    expect(registry.cancelAll()).toBe(1)
+    expect(settled).toHaveLength(1)
+  })
+
+  it('absorbs an observer that throws', () => {
+    const { registry } = harness()
+    const handle = registry.start({
+      command: 'pipeline',
+      sessionId: 's1',
+      workspaceRoot: '/ws',
+      stepNames: ['scan'],
+      onSettled: () => { throw new Error('observer exploded') },
+    })
+
+    expect(() => registry.finish(handle.id, { status: 'succeeded' })).not.toThrow()
     expect(registry.get(handle.id)!.status).toBe('succeeded')
   })
 })

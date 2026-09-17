@@ -28,6 +28,17 @@ export interface HostAgent {
   /** The host-native agent object this adapter wraps (the real DSH Agent). Delegated child runs must receive it untouched — a duck-typed wrapper lacks `session`/`ctx` and breaks host-side delegation. */
   readonly original?: unknown
   submit?(prompt: string, signal: AbortSignal): Promise<HostTurnResult>
+  /**
+   * Queue one plugin-sourced message and wake the agent loop (`Agent.followup`).
+   *
+   * Distinct from {@link submit} on purpose: the message is attributed to this
+   * plugin rather than to the user, and it is never abort-guarded, because it
+   * reports work that has already happened. This is what a detached run's
+   * outcome travels on — the message is durable, renders as a `smart-commands`
+   * context row, and the turn it opens is what keeps the session out of the
+   * sidebar's "empty session" hiding rule.
+   */
+  notify?(text: string): void
 }
 
 export interface HostTurnResult {
@@ -121,6 +132,12 @@ export interface PluginConfig {
   readonly maxDelegationDepth: number
   readonly spawnProvider: string
   readonly forkProvider: string
+  /**
+   * Report a settled detached chain run back into its session (one extra
+   * main-agent turn). On by default because the report is what makes the run's
+   * output durable and its session visible; turn it off to spend no turn.
+   */
+  readonly notifyOnRunSettle: boolean
 }
 
 export const DEFAULT_PLUGIN_CONFIG: PluginConfig = {
@@ -131,6 +148,7 @@ export const DEFAULT_PLUGIN_CONFIG: PluginConfig = {
   maxDelegationDepth: 3,
   spawnProvider: 'spawn',
   forkProvider: 'fork',
+  notifyOnRunSettle: true,
 }
 
 export interface SmartCommandsHost {
