@@ -43,3 +43,11 @@ _Avoid_: Static list, global store
 **Focus Restoration**:
 The automatic returning of DOM focus to the chat composer textarea following Prompt Menu insertion or dismissal.
 _Avoid_: Blur, unmanaged focus, trigger refocusing
+
+**Chain Run**:
+One execution of a `chain` template that has been detached from the slash-command transaction, so the composer is released immediately while the steps keep running under the run's own AbortSignal.
+_Avoid_: Background job, queued command, async command
+
+**Run Dock**:
+The collapsible panel above the composer card (`conversation.input.dock`, id `smart-commands.runs`) showing this session's Chain Runs with step progress, elapsed time, and a cancel control.
+_Avoid_: Progress bar, job panel, task list, status bar
