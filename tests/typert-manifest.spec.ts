@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { TYPERT_REMOTE as CLIENT_TYPERT_REMOTE } from '../src/client/remote-contribution.ts'
+import { SMART_COMMANDS_ENDPOINTS } from '../src/remote/contract.ts'
 import { TYPERT } from '../src/typert.host.ts'
 import { TYPERT_REMOTE } from '../src/typert.remote-client.ts'
 
@@ -26,7 +27,11 @@ describe('typert artifacts', () => {
     expect(TYPERT.package).toBe('@deepseek-ai/dsh-plugin-smart-commands')
     expect(TYPERT.face).toBe('host')
     expect(Array.isArray(TYPERT.schemas)).toBe(true)
-    expect(TYPERT.invocations.map(item => item.method)).toEqual(['list', 'read', 'write', 'deleteTemplate', 'copy'])
+    // Derived from the contract, not hard-coded: adding an endpoint to
+    // SMART_COMMANDS_ENDPOINTS must never require editing this assertion.
+    expect(TYPERT.invocations.map(item => item.method)).toEqual(
+      SMART_COMMANDS_ENDPOINTS.map(item => item.method),
+    )
     for (const invocation of TYPERT.invocations) {
       expect(invocation.result.schema).toMatchObject({ parse: expect.any(Function) })
       expect('_zod' in invocation.result.schema).toBe(true)

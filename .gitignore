@@ -6,3 +6,7 @@ coverage/
 .tmp/
 .vitest/
 graphify-out/
+
+# Local runtime state: this repo's own project-level templates/keywords used
+# for dogfooding the plugin (registers real slash commands in this workspace).
+.dsh/
