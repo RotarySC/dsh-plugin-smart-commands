@@ -52,8 +52,8 @@ describe('client remote mount', () => {
     expect(result).toBe(mounted)
   })
 
-  it('registers the settings section immediately with a connect callback', () => {
-    let sectionInject: Record<string, unknown> | undefined
+  it('registers the settings section, prompt trigger, and run dock with a connect callback', () => {
+    const registrations: Array<{ name?: string; id?: string; inject?: Record<string, unknown> }> = []
     apply({
       locale: {
         register: () => () => undefined,
@@ -64,9 +64,13 @@ describe('client remote mount', () => {
           callback()
         },
         register(options) {
-          sectionInject = typeof options.inject === 'function'
-            ? (options.inject as () => Record<string, unknown>)()
-            : undefined
+          registrations.push({
+            name: options.name as string | undefined,
+            id: options.id as string | undefined,
+            inject: typeof options.inject === 'function'
+              ? (options.inject as () => Record<string, unknown>)()
+              : undefined,
+          })
           return () => undefined
         },
       },
@@ -77,8 +81,20 @@ describe('client remote mount', () => {
         callback()
       },
     })
-    expect(typeof sectionInject?.connect).toBe('function')
-    expect(typeof sectionInject?.t).toBe('function')
+    expect(registrations.map(entry => entry.name)).toEqual([
+      'settings.section',
+      'conversation.input.left',
+      'conversation.input.dock',
+    ])
+    expect(registrations.map(entry => entry.id)).toEqual([
+      'smart-commands',
+      'smart-commands.prompt-trigger',
+      'smart-commands.runs',
+    ])
+    for (const entry of registrations) {
+      expect(typeof entry.inject?.connect).toBe('function')
+      expect(typeof entry.inject?.t).toBe('function')
+    }
   })
 
   it('waits on inject when get cannot see the nested service yet', async () => {
@@ -111,5 +127,38 @@ describe('client remote mount', () => {
       effect() {},
     })
     expect(result).toBe(mounted)
+  })
+
+  it('parses a run inventory through the client-side descriptors', () => {
+    const descriptor = TYPERT_REMOTE.descriptors.find(item => item.method === 'listRuns')
+    expect(descriptor).toBeDefined()
+    const inventory = descriptor!.result.schema.parse({
+      runs: [{
+        id: 'run-1',
+        command: 'pipeline',
+        sessionId: 's1',
+        workspaceRoot: '/ws',
+        status: 'running',
+        startedAt: 1_000,
+        round: 2,
+        rounds: 3,
+        steps: [{ name: 'scan', index: 0, status: 'running', startedAt: 1_000 }],
+        files: [],
+      }],
+    })
+    expect(inventory.runs[0]).toMatchObject({ command: 'pipeline', status: 'running', round: 2, rounds: 3 })
+    expect(inventory.runs[0].steps[0]).toMatchObject({ name: 'scan', index: 0, status: 'running' })
+    expect(() => descriptor!.result.schema.parse({ runs: [{ id: 'run-1' }] })).toThrow()
+  })
+
+  it('parses cancel requests and result envelopes through the client-side descriptors', () => {
+    const descriptor = TYPERT_REMOTE.descriptors.find(item => item.method === 'cancelRun')
+    expect(descriptor).toBeDefined()
+    expect(descriptor!.parameters[0].codec.schema.parse({ runId: 'run-1', sessionId: 's1' }))
+      .toEqual({ runId: 'run-1', sessionId: 's1' })
+    expect(descriptor!.parameters[0].codec.schema.parse({ runId: 'run-1' })).toEqual({ runId: 'run-1' })
+    expect(descriptor!.result.schema.parse({ ok: false, error: 'unknown run: run-1' }))
+      .toEqual({ ok: false, error: 'unknown run: run-1' })
+    expect(() => descriptor!.parameters[0].codec.schema.parse({})).toThrow()
   })
 })

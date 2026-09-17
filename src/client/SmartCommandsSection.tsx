@@ -3,6 +3,12 @@ import { createPortal } from 'react-dom'
 import { compareInventory, filterInventory, groupInventory, type CatalogFilter } from '../catalog-query.js'
 import type { InventoryTemplate, TemplateInventory, TemplateOrigin } from '../types/catalog.js'
 import type {
+  ChainRunCancelRequest,
+  ChainRunCancelResult,
+  ChainRunInventory,
+  ChainRunScope,
+} from '../types/runs.js'
+import type {
   InventoryKeywordCategory,
   KeywordCategory,
   KeywordInventory,
@@ -39,6 +45,8 @@ export interface SmartCommandsRemote {
   }): Promise<RemoteResult<{ ok: boolean; error?: string }>>
   listKeywords(request?: { workspaceRoot?: string }): Promise<RemoteResult<KeywordInventory>>
   writeKeywords(request: KeywordWriteRequest): Promise<RemoteResult<KeywordMutationResult>>
+  listRuns(request?: ChainRunScope): Promise<RemoteResult<ChainRunInventory>>
+  cancelRun(request: ChainRunCancelRequest): Promise<RemoteResult<ChainRunCancelResult>>
 }
 
 export interface SmartCommandsSectionProps {

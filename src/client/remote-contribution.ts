@@ -25,6 +25,11 @@ function asStringArray(value: unknown, path: string): string[] {
   return value
 }
 
+function asNumber(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) fail(`${path} must be a finite number`)
+  return value
+}
+
 function asOrigin(value: unknown, path: string): 'user' | 'project' {
   if (value !== 'user' && value !== 'project') fail(`${path} must be user or project`)
   return value
@@ -187,6 +192,85 @@ function schema<T>(parse: (value: unknown) => T): { parse(value: unknown): T } {
   return { parse }
 }
 
+const RUN_STATUSES = ['running', 'succeeded', 'failed', 'cancelled'] as const
+const RUN_STEP_STATUSES = ['pending', 'running', 'done', 'failed', 'skipped'] as const
+
+function parseRunStep(value: unknown, path: string): Record<string, unknown> {
+  const record = asObject(value, path)
+  const status = record.status
+  if (!RUN_STEP_STATUSES.includes(status as typeof RUN_STEP_STATUSES[number])) {
+    fail(`${path}.status must be a chain run step status`)
+  }
+  return {
+    name: asString(record.name, `${path}.name`),
+    index: asNumber(record.index, `${path}.index`),
+    status,
+    ...typeof record.startedAt === 'number' ? { startedAt: record.startedAt } : {},
+    ...typeof record.endedAt === 'number' ? { endedAt: record.endedAt } : {},
+    ...typeof record.error === 'string' ? { error: record.error } : {},
+  }
+}
+
+function parseRunRecord(value: unknown, path: string): Record<string, unknown> {
+  const record = asObject(value, path)
+  const status = record.status
+  if (!RUN_STATUSES.includes(status as typeof RUN_STATUSES[number])) fail(`${path}.status must be a chain run status`)
+  if (!Array.isArray(record.steps)) fail(`${path}.steps must be an array`)
+  if (!Array.isArray(record.files)) fail(`${path}.files must be an array`)
+  return {
+    id: asString(record.id, `${path}.id`),
+    command: asString(record.command, `${path}.command`),
+    sessionId: asString(record.sessionId, `${path}.sessionId`),
+    workspaceRoot: asString(record.workspaceRoot, `${path}.workspaceRoot`),
+    status,
+    startedAt: asNumber(record.startedAt, `${path}.startedAt`),
+    ...typeof record.endedAt === 'number' ? { endedAt: record.endedAt } : {},
+    round: asNumber(record.round, `${path}.round`),
+    rounds: asNumber(record.rounds, `${path}.rounds`),
+    steps: record.steps.map((step, index) => parseRunStep(step, `${path}.steps[${index}]`)),
+    files: record.files.map((file, index) => asString(file, `${path}.files[${index}]`)),
+    ...typeof record.text === 'string' ? { text: record.text } : {},
+    ...typeof record.error === 'string' ? { error: record.error } : {},
+  }
+}
+
+function optionalSessionId(record: Record<string, unknown>): { sessionId?: string } {
+  return typeof record.sessionId === 'string' && record.sessionId.trim() ? { sessionId: record.sessionId } : {}
+}
+
+function parseRunScope(value: unknown) {
+  if (value === undefined || value === null) return {}
+  const record = asObject(value, 'request')
+  return {
+    ...optionalSessionId(record),
+    ...optionalWorkspaceRoot(record),
+    ...typeof record.includeFinished === 'boolean' ? { includeFinished: record.includeFinished } : {},
+  }
+}
+
+function parseRunInventory(value: unknown) {
+  const record = asObject(value, 'result')
+  if (!Array.isArray(record.runs)) fail('run inventory shape is invalid')
+  return { runs: record.runs.map((run, index) => parseRunRecord(run, `runs[${index}]`)) }
+}
+
+function parseRunCancel(value: unknown) {
+  const record = asObject(value, 'request')
+  return {
+    runId: asString(record.runId, 'request.runId'),
+    ...optionalSessionId(record),
+  }
+}
+
+function parseRunCancelResult(value: unknown) {
+  const record = asObject(value, 'result')
+  return {
+    ok: asBoolean(record.ok, 'result.ok'),
+    ...typeof record.runId === 'string' ? { runId: record.runId } : {},
+    ...typeof record.error === 'string' ? { error: record.error } : {},
+  }
+}
+
 export const TYPERT_REMOTE: TypertRemoteContribution = {
   package: SMART_COMMANDS_PACKAGE,
   descriptors: bindSmartCommandsDescriptors({
@@ -201,5 +285,11 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
     KeywordInventory: schema(parseKeywordInventory),
     KeywordWriteRequest: schema(parseKeywordWrite),
     KeywordMutationResult: schema(parseKeywordMutation),
+    ChainRunStep: schema(value => parseRunStep(value, 'ChainRunStep')),
+    ChainRunRecord: schema(value => parseRunRecord(value, 'ChainRunRecord')),
+    ChainRunScope: schema(parseRunScope),
+    ChainRunInventory: schema(parseRunInventory),
+    ChainRunCancelRequest: schema(parseRunCancel),
+    ChainRunCancelResult: schema(parseRunCancelResult),
   }),
 }

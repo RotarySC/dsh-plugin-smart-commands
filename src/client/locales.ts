@@ -84,6 +84,16 @@ export const zh = {
   confirmDeleteCategory: '确定删除该分类及其所有关键字吗？此操作不可撤销。',
   templatesTab: '指令模板',
   keywordsTab: '关键字',
+  runPanelTitle: '链式运行',
+  runStatusRunning: '运行中',
+  runStatusSucceeded: '已完成',
+  runStatusFailed: '失败',
+  runStatusCancelled: '已取消',
+  runStepLabel: '步骤',
+  runRoundLabel: '轮次',
+  runExpand: '结果',
+  runCollapse: '收起',
+  runFiles: '变更文件',
 }
 
 export type SmartCommandsLocaleKey = keyof typeof zh
@@ -174,4 +184,14 @@ export const en: Record<SmartCommandsLocaleKey, string> = {
   confirmDeleteCategory: 'Delete this category and all its keywords? This cannot be undone.',
   templatesTab: 'Templates',
   keywordsTab: 'Keywords',
+  runPanelTitle: 'Chain runs',
+  runStatusRunning: 'Running',
+  runStatusSucceeded: 'Done',
+  runStatusFailed: 'Failed',
+  runStatusCancelled: 'Cancelled',
+  runStepLabel: 'Step',
+  runRoundLabel: 'Round',
+  runExpand: 'Result',
+  runCollapse: 'Hide',
+  runFiles: 'Changed files',
 }

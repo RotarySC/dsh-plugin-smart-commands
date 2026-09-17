@@ -2,6 +2,7 @@ import { TYPERT_REMOTE } from './remote-contribution.js'
 import { setActiveSmartCommandsConnect } from './connect.js'
 import { SmartCommandsSection, type SmartCommandsRemote } from './SmartCommandsSection.js'
 import { PromptMenuButton } from './PromptMenuButton.js'
+import { RunDock } from './RunDock.js'
 import { en, zh, type SmartCommandsLocaleKey } from './locales.js'
 import { currentWorkspacePath } from './workspace.js'
 
@@ -120,4 +121,13 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => ({ t, connect, workspaceRoot }),
   }, PromptMenuButton))
+
+  // Register the detached chain-run panel above the composer card
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock',
+    id: 'smart-commands.runs',
+    order: 30,
+    locale: NS,
+    inject: () => ({ t, connect }),
+  }, RunDock))
 }
