@@ -234,7 +234,7 @@ export function RunDock(props: RunDockProps): ReactNode {
               const open = expanded[run.id] === true
               const position = progress.total === 0
                 ? undefined
-                : `${Math.min(progress.done + 1, progress.total)}/${progress.total}${step ? ` · ${step.name}` : ''}`
+                : `${t('runStepLabel')} ${Math.min(progress.done + 1, progress.total)}/${progress.total}${step ? ` · ${step.name}` : ''}`
               const round = run.rounds > 1
                 ? `${t('runRoundLabel')} ${run.round}/${run.rounds}`
                 : undefined

@@ -5,7 +5,6 @@ import {
   currentStep,
   elapsedMs,
   isLive,
-  liveRunIds,
   runProgress,
   runStatusCounts,
   visibleRuns,
@@ -32,15 +31,15 @@ function run(overrides: Partial<ChainRunRecord> = {}): ChainRunRecord {
 }
 
 describe('run progress', () => {
-  it('reports a fresh run as 0% with no live step', () => {
-    expect(runProgress(run())).toEqual({ done: 0, total: 2, runningIndex: undefined, percent: 0 })
+  it('reports a fresh run as two steps to go', () => {
+    expect(runProgress(run())).toEqual({ done: 0, total: 2 })
   })
 
-  it('counts settled steps and names the live one', () => {
+  it('counts settled steps', () => {
     const progress = runProgress(run({
       steps: [step('scan', 0, 'done'), step('fix', 1, 'running'), step('verify', 2, 'pending')],
     }))
-    expect(progress).toEqual({ done: 1, total: 3, runningIndex: 1, percent: 33 })
+    expect(progress).toEqual({ done: 1, total: 3 })
   })
 
   it('treats failed and skipped steps as settled but keeps pending visible', () => {
@@ -50,12 +49,12 @@ describe('run progress', () => {
       steps: [step('scan', 0, 'done'), step('fix', 1, 'failed'), step('verify', 2, 'skipped'), step('ship', 3, 'pending')],
     }))
     expect(progress.done).toBe(3)
-    expect(progress.percent).toBe(75)
+    expect(progress.total).toBe(4)
   })
 
-  it('reports a stepless run as 0% live and 100% settled', () => {
-    expect(runProgress(run({ steps: [] })).percent).toBe(0)
-    expect(runProgress(run({ steps: [], status: 'succeeded', endedAt: 2_000 })).percent).toBe(100)
+  it('reports a stepless run as nothing to enumerate', () => {
+    expect(runProgress(run({ steps: [] }))).toEqual({ done: 0, total: 0 })
+    expect(runProgress(run({ steps: [], status: 'succeeded', endedAt: 2_000 }))).toEqual({ done: 0, total: 0 })
   })
 
   it('names the live step first, then the next pending one', () => {
@@ -130,9 +129,8 @@ describe('run roster', () => {
     expect(visibleRuns([run({ status: 'failed' })], 10_000)).toEqual([])
   })
 
-  it('separates live ids from settled rows', () => {
+  it('classifies live rows apart from settled ones', () => {
     const rows = [run({ id: 'a' }), run({ id: 'b', status: 'succeeded', endedAt: 2 })]
-    expect(liveRunIds(rows)).toEqual(['a'])
     expect(rows.map(isLive)).toEqual([true, false])
   })
 })

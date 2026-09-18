@@ -23,7 +23,6 @@ export class SmartCommandsRunApi {
       runs: this.runs.list({
         ...request.sessionId ? { sessionId: request.sessionId } : {},
         ...request.workspaceRoot ? { workspaceRoot: request.workspaceRoot } : {},
-        ...request.includeFinished !== undefined ? { includeFinished: request.includeFinished } : {},
       }),
     }
   }

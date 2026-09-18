@@ -150,7 +150,6 @@ export const chainRunInventorySchema = z.object({
 export const chainRunScopeSchema = z.object({
   sessionId: z.string().min(1).optional(),
   workspaceRoot: workspaceRootSchema,
-  includeFinished: z.boolean().optional(),
 })
 
 export const chainRunCancelRequestSchema = z.object({

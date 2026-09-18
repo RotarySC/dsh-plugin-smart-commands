@@ -16,24 +16,13 @@ const SETTLED_STEPS = new Set(['done', 'failed', 'skipped'])
 export interface RunProgress {
   readonly done: number
   readonly total: number
-  readonly runningIndex: number | undefined
-  readonly percent: number
 }
 
-/** Step progress of one run; a stepless run is 0% while live and 100% once settled. */
+/** Step progress of one run: how many of its steps have reached a terminal state. */
 export function runProgress(run: ChainRunRecord): RunProgress {
   const total = run.steps.length
   const done = run.steps.filter(step => SETTLED_STEPS.has(step.status)).length
-  const runningIndex = run.steps.findIndex(step => step.status === 'running')
-  const percent = total === 0
-    ? run.status === 'running' ? 0 : 100
-    : Math.round((done / total) * 100)
-  return {
-    done,
-    total,
-    runningIndex: runningIndex === -1 ? undefined : runningIndex,
-    percent,
-  }
+  return { done, total }
 }
 
 /** The step to name in the dock: the live one, else the next pending one. */
@@ -78,11 +67,6 @@ export function visibleRuns(
     if (options.pinned?.has(run.id) === true) return true
     return run.endedAt !== undefined && now - run.endedAt <= ttl
   })
-}
-
-/** Ids worth cancelling from one roster snapshot. */
-export function liveRunIds(runs: readonly ChainRunRecord[]): string[] {
-  return runs.filter(isLive).map(run => run.id)
 }
 
 /** The statuses the panel's header account reports, most current first. */

@@ -79,11 +79,11 @@ function runApiOf(): SmartCommandsRunApi {
 }
 
 export class SmartCommandsGateway extends TypertRemoteService {
-  constructor(ctx: Context, loader: TemplateLoader, runs?: ChainRunRegistry) {
+  constructor(ctx: Context, loader: TemplateLoader, runs: ChainRunRegistry) {
     // Cordis Service constructors return a tracker proxy; instance fields on
     // `this` after super() are not visible when Gateway later invokes methods.
     bindCatalogApi(new SmartCommandsCatalogApi(loader))
-    bindRunApi(new SmartCommandsRunApi(runs ?? new ChainRunRegistry()))
+    bindRunApi(new SmartCommandsRunApi(runs))
     super(ctx, 'smartCommands')
   }
 
@@ -138,17 +138,24 @@ export class SmartCommandsGateway extends TypertRemoteService {
   }
 }
 
+/**
+ * Install the gateway, or bind the API faces alone when Cordis is unavailable.
+ *
+ * `runs` is required rather than defaulted: a second, empty table bound under the
+ * same global symbol would answer `listRuns` with an empty roster forever, which
+ * is a silent failure — the caller that owns the live table always has one.
+ */
 export function tryStartSmartCommandsGateway(
   ctx: unknown,
   loader: TemplateLoader,
-  runs?: ChainRunRegistry,
+  runs: ChainRunRegistry,
 ): SmartCommandsGateway | undefined {
   if (!ctx || typeof ctx !== 'object') return undefined
   try {
     return new SmartCommandsGateway(ctx as Context, loader, runs)
   } catch {
     bindCatalogApi(new SmartCommandsCatalogApi(loader))
-    bindRunApi(new SmartCommandsRunApi(runs ?? new ChainRunRegistry()))
+    bindRunApi(new SmartCommandsRunApi(runs))
     return undefined
   }
 }

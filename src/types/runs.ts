@@ -80,11 +80,10 @@ export interface ChainStepProgress {
   readonly error?: string
 }
 
-/** Remote request scope for `listRuns`. */
+/** Remote request scope for `listRuns`. Terminal runs are always included. */
 export interface ChainRunScope {
   readonly sessionId?: string
   readonly workspaceRoot?: string
-  readonly includeFinished?: boolean
 }
 
 /** Remote result for `listRuns`. */

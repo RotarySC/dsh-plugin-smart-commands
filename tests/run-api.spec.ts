@@ -33,12 +33,10 @@ describe('smartCommands run remote api', () => {
     expect(inventory.runs.map(run => run.command)).toEqual(['audit'])
   })
 
-  it('drops settled runs when the caller asks for live ones only', async () => {
+  it('keeps a settled run in the default roster, most recent first', async () => {
     const { runs, first } = registryWithRuns()
     runs.finish(first, { status: 'succeeded' })
-    const api = new SmartCommandsRunApi(runs)
-    expect((await api.listRuns()).runs.map(run => run.command)).toEqual(['audit', 'pipeline'])
-    expect((await api.listRuns({ includeFinished: false })).runs.map(run => run.command)).toEqual(['audit'])
+    expect((await new SmartCommandsRunApi(runs).listRuns()).runs.map(run => run.command)).toEqual(['audit', 'pipeline'])
   })
 
   it('cancels a run and reports refusals as results, never as throws', async () => {

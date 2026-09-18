@@ -1,4 +1,4 @@
-import { firstLine, formatDuration } from '../run-format.js'
+import { NOTICE_SUMMARY_MAX_CHARS, bound, firstLine, formatDuration } from '../run-format.js'
 import type { ChainRunRecord, ChainRunStatus, ChainRunStep } from '../types/runs.js'
 
 /**
@@ -21,7 +21,7 @@ export const RUN_SUMMARY_OUTPUT_MAX_CHARS = 4_000
 /** Files listed inline before the rest collapse into a count. */
 export const RUN_SUMMARY_FILE_LIMIT = 20
 /** Bound DSH applies to a `notice` source summary; stay inside it deliberately. */
-export const RUN_SUMMARY_HEADLINE_MAX_CHARS = 120
+export const RUN_SUMMARY_HEADLINE_MAX_CHARS = NOTICE_SUMMARY_MAX_CHARS
 
 const STATUS_LABEL: Record<ChainRunStatus, string> = {
   running: 'running',
@@ -33,10 +33,6 @@ const STATUS_LABEL: Record<ChainRunStatus, string> = {
 /** Closing line: this is a report, not a request, and it must not cost a wall of text. */
 const REPORT_FOOTER = 'Generated automatically by the smart-commands plugin for a background chain run. '
   + 'Only act on it if a step failed or follow-up work is needed.'
-
-function bound(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`
-}
 
 function elapsedMs(run: ChainRunRecord): number {
   return Math.max(0, (run.endedAt ?? run.startedAt) - run.startedAt)

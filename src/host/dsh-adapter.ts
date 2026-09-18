@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { HostAgent, HostLlm, HostSubagents, HostTurnResult, ModelRef, ModelRegistry, ModelSession, SubagentRunResult } from '../types/host.js'
 import { parseModelRef } from '../engine/model-router.js'
+import { NOTICE_SUMMARY_MAX_CHARS, bound, firstLine } from '../run-format.js'
 
 interface DshContentBlock {
   type?: string
@@ -116,14 +117,7 @@ interface DshAgentLike {
   followup?(message: unknown): void
 }
 
-/**
- * Bound DSH applies to a `notice` source summary (`CONTEXT_SUMMARY_MAX_CHARS`).
- * The row renders this line without expanding, so an over-long one is ellipsized
- * by the host anyway — bounding it here keeps the stored source honest.
- */
-const NOTICE_SUMMARY_MAX_CHARS = 120
-
-/** The plugin's own name in message provenance, shared with `package.json`. */
+/** The plugin's own name in message provenance; the literal `docs/chain-run-followups.md` §5.1 fixes. */
 const PLUGIN_NAME = 'smart-commands'
 
 function enqueue(agent: DshAgentLike, text: string, source: Record<string, unknown>): void {
@@ -135,12 +129,13 @@ function enqueue(agent: DshAgentLike, text: string, source: Record<string, unkno
   })
 }
 
+/**
+ * The one-line account for a `notice` source: the message's first line, inside
+ * the bound DSH applies. Both halves come from `run-format.ts`, the same place
+ * the settled-run report gets them, so the two cannot drift apart.
+ */
 function noticeSummary(text: string): string {
-  const [first = ''] = text.split('\n')
-  const summary = first.trim()
-  return summary.length <= NOTICE_SUMMARY_MAX_CHARS
-    ? summary
-    : `${summary.slice(0, NOTICE_SUMMARY_MAX_CHARS - 1)}…`
+  return bound(firstLine(text), NOTICE_SUMMARY_MAX_CHARS)
 }
 
 /**

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { SmartCommandsCatalogApi } from '../src/remote/catalog-api.ts'
 import { SmartCommandsGateway } from '../src/remote/gateway.ts'
+import { ChainRunRegistry } from '../src/engine/run-registry.ts'
 import { TemplateLoader } from '../src/loader/template-loader.ts'
 
 const review = `---
@@ -176,7 +177,7 @@ describe('catalog api', () => {
         },
       },
     }
-    const gateway = new SmartCommandsGateway(ctx as never, loader)
+    const gateway = new SmartCommandsGateway(ctx as never, loader, new ChainRunRegistry())
     const listed = await gateway.list()
     expect(listed.templates.some(item => item.name === 'review')).toBe(true)
   })

@@ -5,9 +5,9 @@
 > | 项 | 值 |
 > |---|---|
 > | 分支 | `feat/chain-run-projection` |
-> | 已提交 HEAD | `9ff19cd`（面板修复 + **方案 A 回投汇总**，23 文件；其下为 `6a2421f`/`d0f2362`/`837a858` 三笔 C 方向） |
-> | 未提交改动 | 仅本文件的 §8 状态快照（提交后回填） |
-> | 验证状态 | `npm run typecheck` ✅ · `npm test` 181 用例 / 23 文件 ✅ · `npm run build` ✅ |
+> | 已提交 HEAD | `00032ef`（**面板默认折叠 + §7.4 现场手册**；其下依次为 `546d167` 面板样式统一、`9ff19cd` 方案 A 回投、`6a2421f` 文档、`d0f2362` 面板、`837a858` 分离运行 —— 共 6 笔 / 39 文件） |
+> | 未提交改动 | 本文件的 §8 快照与 §9 审查记录，以及分支审查后的修复（§9 列出） |
+> | 验证状态 | `npm run typecheck` ✅ · `npm test` 189 用例 / 23 文件 ✅ · `npm run build` ✅ |
 > | DSH 版本 | `0.1.6-alpha.1` |
 >
 > 证据标注约定：**【一手】**= 本文档作者直接读代码/解日志核对过；**【转述】**= 由调研子代理给出，行号未逐条复核；**【推测】**= 尚未验证的推断，附验证方法。
@@ -219,7 +219,7 @@ function sessionVisible(session, current, archived) {
 |---|---|---|---|---|
 | T1 | 裁定问题 A 走 A / B / C 哪个方案 | 决策 | — | ✅ **已拍板：方案 A** |
 | T2 | 提交运行面板修复 + 方案 A | 提交 | T1 | ✅ **已完成**（`9ff19cd`，23 文件） |
-| T3 | 方案 A：`startDetached` 结算后回投汇总 + 测试 | 实现 | T1 | ✅ **已完成**（`onSettled` → `notify`；新增 24 个用例） |
+| T3 | 方案 A：`startDetached` 结算后回投汇总 + 测试 | 实现 | T1 | ✅ **已完成**（`onSettled` → `notify`；新增 25 个用例：`6a2421f` 156 → `9ff19cd` 181） |
 | T4 | README 与 AGENTS 补充"新会话首条用斜杠命令"的限制 | 文档 | T1 | ✅ **已完成**（README「分离执行与运行面板」+ AGENTS 不变式两条） |
 | T5 | 向上游提 issue：`list.js:29` 未把 `command/run` 视为 engagement | 上游 | — | 挂起（方案 A 不替代它：其它斜杠命令仍会隐藏会话） |
 | T6 | 现场验证：方案 A 是否真的让 chain 会话稳定留存；并分离 P2（客户端 blank 陈旧）vs P1（5 行折叠） | 验证 | 需用户配合：重启 `dsh web` → 新会话跑一次 `/chain-test` → 切走／刷新观察 | 挂起（**现在含方案 A 的端到端确认**） |
@@ -228,6 +228,8 @@ function sessionVisible(session, current, archived) {
 | T9 | （可选）把测试链模板 `.dsh/commands/chain-test.md` 提升为 `examples/` 中随仓库分发的样例 | 文档 | — | 挂起 |
 | T10 | 面板轮询健壮性：`await load()` 加超时并在超时后**继续排下一次**；把最近一次运行列表缓存到 `sessionStorage`，重挂载时先渲染"上次已知（可能过期）"而不是整条消失 | 实现 | 本次事故 | 挂起（用户选 C 先抓现场，改了会掩盖症状，故**暂不做**） |
 | T11 | 把"入站请求通路停摆"(§7.4) 与 `list-children.js` 的静默丢弃路径一并上报上游 | 上游 | §7.4 取证 | 挂起 |
+| T12 | 把"亮色下 `--dsw-alias-label-tertiary` on `--dsw-specific-tip` = 3.42:1（AA 需 4.5）"上报上游。本插件**刻意保持与 DSH 自带 dock 一致**（`TodoPanel` 用同一配对，暗色 5.67:1 达标），故不在本仓改 token —— 详见 §9 | 上游 | — | 挂起（用户拍板：不改本仓） |
+| T13 | `RunDock` 关闭按钮把焦点节点从名册移除且无焦点转移/播报（审查列为 pre-existing） | 实现 | — | 挂起（需可渲染环境验证，盲改有风险） |
 
 ---
 
@@ -320,7 +322,8 @@ for (let n = 0; n < offs.length; n++) {
 **已提交**（分支 `feat/chain-run-projection`）：
 
 ```
-546d167 fix(client): match the run panel to DSH's dock style and make close stick   ← 本轮：样式统一 + 关闭生效（21 文件）
+00032ef feat(client): start the run panel collapsed                        ← 本轮：默认折叠 + §7.4 手册
+546d167 fix(client): match the run panel to DSH's dock style and make close stick
 9ff19cd feat(runs): report settled chain runs back into their session
 6a2421f docs: document detached chain runs and the run dock
 d0f2362 feat(client): add the chain run dock
@@ -358,15 +361,52 @@ UI 重做    src/client/{RunDock.tsx, run-dock.css.ts, icons.tsx, run-view.ts}
 文档       README.md、AGENTS.md、本文件
 ```
 
-**未提交**（本轮：面板默认折叠 + §7.4 手册）：
+`00032ef` 的内容分组（面板默认折叠 + 现场抓取手册）：
 
 ```
- M src/client/RunDock.tsx          (collapsed 默认 true —— 头部即摘要，结算后只占一行)
- M AGENTS.md                       (RunDock 默认折叠)
- M README.md                       (面板默认折叠、点头部展开)
- M docs/chain-run-followups.md     (§7.4 现场抓取手册 + T10/T11 + 本快照)
+UI        src/client/RunDock.tsx（collapsed 默认 true —— 头部即摘要，结算后只占一行）
+文档      README.md、AGENTS.md、本文件（§7.4 手册 + T10/T11 + 本快照）
 ```
+
+> §8 的这张表是**指示性**的（每次提交后由当轮回填）：若与 `git log --oneline` 不一致，**以 `git log` 为准**。
 
 **本地（gitignored，不入库）**：`.dsh/commands/chain-test.md` —— `/chain-test` 测试链（4 步约 45 秒；顺序 + 并行 2 路；`as`/`{outputs.x}`/`{previous}` 绑定；body 内写有把 `loop` 改 2 验证轮次、给第 2 步加 `worktree true` 验证隔离工作树的改法）。
 
 **续接方式**：T5/T11 上游、T6 现场验证、T7 决策、T9 可选、T10 面板健壮性（等 C 抓到现场后再决定改法）。§7.4 是卡死时的现场手册——**先别重启**，四步取证后再重启。老 T6 的验证顺序：重启 `dsh web` → 新建会话 → 跑一次 `/chain-test` → 等面板结算 → 看会话里是否出现 `smart-commands` 上下文行 → 切走／刷新看会话是否仍在列表。若会话仍消失，则 §2.6 的 P1/P2 分支需要现场打印 `summary.blank` 来分离。**关闭按钮的验证同样是宿主侧行为**（`dismissRun` 在宿主进程里），只刷新页面验证不了。
+
+---
+
+## 9. 分支审查（`9480b5f..HEAD`）与修复记录
+
+2026-09-18 由三轴并行审查（Standards / Spec / Interface，Interface 走 `interface-review` → `better-interface` full 模式）覆盖全部 6 笔提交、39 文件。**已核实**：`master` 正指向 merge-base `9480b5f`，合并是 fast-forward，无冲突；`npm run typecheck` ✅、`npm test` 189/23 ✅、`dist/client.js` 的 mtime 比 HEAD 早 37 秒且含 `collapsed=true`。
+
+### 9.1 已修（本轮的未提交改动）
+
+| # | 轴 | 问题 | 修法 |
+|---|---|---|---|
+| 1 | Standards | `dsh-adapter.ts` 重写了 `firstLine`，且 120 上界被声明两次（`NOTICE_SUMMARY_MAX_CHARS` / `RUN_SUMMARY_HEADLINE_MAX_CHARS`）、截断实现 `bound()` 也在两处 | `run-format.ts` 成为唯一出处：新增 `NOTICE_SUMMARY_MAX_CHARS` + `bound()`；`run-summary.ts` 与 `dsh-adapter.ts` 改为复用（`noticeSummary` 现在就是 `bound(firstLine(text), NOTICE_SUMMARY_MAX_CHARS)`） |
+| 2 | Standards | README 承诺行内显示 `步骤 i/N`，实现没有该字样；`runStepLabel` 是死键 | `RunDock` 真正使用 `t('runStepLabel')`，行内变为 `步骤 2/4 · 步骤名`，与 README 一致 |
+| 3 | Standards / Spec | 删掉进度条后的残留死面：`RunProgress.percent` / `.runningIndex`、`liveRunIds()`、`.sc-run-detail-head` | 全部删除，`tests/run-view.spec.ts` 相应用例改写（不再是"只被自己的测试吊着"） |
+| 4 | Spec | `includeFinished` 铺了 5 个文件（types ×2、zod、client parser、run-api）却无人调用 | 从**远程面**移除（`ChainRunScope`、`chainRunScopeSchema`、`parseRunScope`、run-api 映射与对应用例）；注册表自己的 `ChainRunListFilter.includeFinished` 保留，它确有语义且另有测试 |
+| 5 | Spec | `gateway.ts` 的 `runs ?? new ChainRunRegistry()` 会在同一全局符号下绑第二张空表（将来两参调用静默返回空名册） | `runs` 改为**必填**（构造函数与 `tryStartSmartCommandsGateway`），两处兜底全部删除；`tests/catalog-api.spec.ts` 相应传表 |
+| 6 | Spec | `dsh-adapter.ts` 注释称 `PLUGIN_NAME` "shared with package.json"，与真实包名不符 | 注释改为"§5.1 固定的字面量" |
+| 7 | Standards | `plugin.ts` 先 `resolve` 判能否分离，`startDetached` 再 resolve 一次（一次决策两次查表） | handler 只调 `startDetached`，由它独占"分离或阻塞"的决策（其内部 fallback 与 `runTemplateCommand` 等价，后者已删除）；模型工具 `smart_command_run` 路径未动，仍传原始 agent |
+| 8 | Spec / 文档 | §8 头部仍记 `9ff19cd` / 181 用例；T3 记"24 个用例" | 本文件头部与 T3 回填为 `00032ef` / 189 用例 / +25 |
+| 9 | Spec | README 把 §5.1 明确标【推测】的结论写成了既成事实 | README 该段加未验证限定，指向 §2.6 与 T6 |
+
+### 9.2 刻意不改（附理由，勿当作遗漏）
+
+| 项 | 理由 |
+|---|---|
+| 亮色下信息性文字 3.42:1（AA 不达标） | **用户拍板**：保持与 DSH 自带 dock 的 `TodoPanel` 完全一致（同一 token、同一 13px），把对比度作为上游问题记录（**T12**）。实测值：亮色 3.42:1 / 暗色 5.67:1；13 个 `--dsw-*` token 在亮暗两套里都有定义，CSS 兜底值永不生效 |
+| 折叠行不显示步骤与耗时 | **用户拍板**：只改文档措辞（README 现已写明折叠时看不到细节、展开后可见），不改行为 —— 保住"结算后只占一行"的初衷 |
+| `run-summary.ts` 与 `run-view.ts` 各有一份 `elapsedMs` | 语义不同：宿主侧 `endedAt ?? startedAt`（只用于结算后），客户端侧 `endedAt ?? now`（运行中要跳秒）。`run-format.ts` 保持"只吃基本类型"的中立定位，不引入 `ChainRunRecord` 依赖；判断项，收益不抵改动 |
+| `CloseIcon` / `CrossIcon` 形状相近 | 角色不同（状态字形 vs 关闭控件），合并会把状态图标与操作控件耦合；判断项 |
+| `CONTEXT.md` 的 Chain Run / Run Dock 词条超出 T4 的文档范围 | 词条本身正确且有用，属自愿增益而非缺陷 |
+| 自身轮询 `await load()` 无超时/缓存（T10） | 仍**阻塞在 C 现场抓取**，理由见 §7.4 末 |
+
+### 9.3 审查给出、确认满足的结论（供复查）
+
+`onSettled` 由 `finish`/`cancel` 各触发一次、`cancelAll` 静默；被打断步骤落 `skipped`；`dismiss` 删除终态行、拒绝 live 行、以结果而非抛错返回；`notify` 不受 abort 保护而 `submit` 受保护且 `kind:'user'`；消息来源恰为 `{kind:'plugin',plugin:'smart-commands',form:'notice',summary}` 且 ≤120；产出 4000 字符截断；`src` 内无任何自定义 session 事件写入；`RunDock` 只发 `sessionId` 从不发 `workspaceRoot`；`contract.ts` 仍是端点单一来源（`typert-manifest` 未改测试）。
+
+**另有两处一手核实的事实（写入 `AGENTS.md`）**：`conversation.input.dock` 是 `scope:"session"` 的 list 槽，`dsh-client-ui-session` 的 `BUILTIN_SOURCE` 声明 `props:['sessionId']` + `hooks:['session']`（→ `useSession`），故面板的会话过滤与取消守卫在运行时成立；该槽各项以 `display:contents` 锚点渲染，因此 todo(0)/goal(10)/queue(20)/runs(30) 都是 `.composerStack`（`gap: 6px`）的直接 flex 子项。

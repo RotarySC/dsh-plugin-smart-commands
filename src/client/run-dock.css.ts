@@ -229,12 +229,6 @@ export const RUN_DOCK_CSS = `
   border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.2));
 }
 
-.sc-run-detail-head {
-  color: var(--dsw-alias-label-tertiary, #8b949e);
-  font-size: 13px;
-  line-height: 20px;
-}
-
 .sc-run-error,
 .sc-run-text,
 .sc-run-files {

@@ -1,5 +1,5 @@
 import { homedir } from 'node:os'
-import { DEFAULT_PLUGIN_CONFIG, type HostAgent, type PluginConfig, type SmartCommandsHost } from './types/host.js'
+import { DEFAULT_PLUGIN_CONFIG, type PluginConfig, type SmartCommandsHost } from './types/host.js'
 import { asHostAgent } from './host/dsh-adapter.js'
 import { CommandRunner } from './engine/command-runner.js'
 import { ChainRunRegistry } from './engine/run-registry.js'
@@ -54,22 +54,6 @@ function signatureOf(template: CommandTemplate): string {
     template.origin,
     template.sourcePath,
   ].join('\0')
-}
-
-async function runTemplateCommand(
-  runner: CommandRunner,
-  command: string,
-  rawInput: string,
-  signal: AbortSignal,
-  agent?: HostAgent,
-): Promise<{ kind: 'success' | 'error'; text: string }> {
-  const result = await runner.run({
-    command,
-    args: parseCommandArgs(rawInput),
-  }, signal, agent)
-  return result.ok
-    ? { kind: 'success', text: result.text }
-    : { kind: 'error', text: result.error }
 }
 
 function formatSmartCatalog(runner: CommandRunner): string {
@@ -143,26 +127,19 @@ export function registerTemplateSlashCommands(
           input: { hint: parameterHint(template) },
           handler: async invocation => {
             await runner.ready()
-            const agent = asHostAgent(invocation.agent)
-            // A chain is delegated to detached runs: awaiting it here would hold
-            // the composer's command transaction for the whole pipeline.
-            if (agent?.id && runner.resolve(template.name)?.chain?.length) {
-              const detached = await runner.startDetached(
-                { command: template.name, args: parseCommandArgs(invocation.rawInput) },
-                invocation.signal,
-                agent,
-              )
-              return detached.ok
-                ? { kind: 'success', text: detached.text }
-                : { kind: 'error', text: detached.error }
-            }
-            return runTemplateCommand(
-              runner,
-              template.name,
-              invocation.rawInput,
+            // `startDetached` owns the detach-or-block decision, so the template is
+            // resolved exactly once: a chain runs in the background (awaiting it here
+            // would hold the composer's command transaction for the whole pipeline)
+            // and a template that cannot detach falls back to the blocking path
+            // inside that same call.
+            const result = await runner.startDetached(
+              { command: template.name, args: parseCommandArgs(invocation.rawInput) },
               invocation.signal,
-              agent,
+              asHostAgent(invocation.agent),
             )
+            return result.ok
+              ? { kind: 'success', text: result.text }
+              : { kind: 'error', text: result.error }
           },
         })
         active.set(name, { signature: signatureOf(template), dispose })

@@ -244,7 +244,6 @@ function parseRunScope(value: unknown) {
   return {
     ...optionalSessionId(record),
     ...optionalWorkspaceRoot(record),
-    ...typeof record.includeFinished === 'boolean' ? { includeFinished: record.includeFinished } : {},
   }
 }
 
