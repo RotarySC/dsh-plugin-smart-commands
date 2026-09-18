@@ -226,6 +226,8 @@ function sessionVisible(session, current, archived) {
 | T7 | 决定是否把 `subagent: true` / persona 的单次子代理也纳入分离运行（问题 C） | 决策 | — | 挂起 |
 | T8 | （可选）与 `dsh-schedule` 对齐，在命令后调用 `ctx.sessions.flush(session)` | 实现 | — | **不建议**：flush 只影响落盘时序/屏障，**改变不了可见性**，解决不了问题 A；方案 A 已用另一条路径解决 |
 | T9 | （可选）把测试链模板 `.dsh/commands/chain-test.md` 提升为 `examples/` 中随仓库分发的样例 | 文档 | — | 挂起 |
+| T10 | 面板轮询健壮性：`await load()` 加超时并在超时后**继续排下一次**；把最近一次运行列表缓存到 `sessionStorage`，重挂载时先渲染"上次已知（可能过期）"而不是整条消失 | 实现 | 本次事故 | 挂起（用户选 C 先抓现场，改了会掩盖症状，故**暂不做**） |
+| T11 | 把"入站请求通路停摆"(§7.4) 与 `list-children.js` 的静默丢弃路径一并上报上游 | 上游 | §7.4 取证 | 挂起 |
 
 ---
 
@@ -275,6 +277,42 @@ for (let n = 0; n < offs.length; n++) {
 | `dsh-plan-mode/lib/types/index.js:408-412` | 插件 notice 先例：`source: { kind: 'plugin', plugin: 'plan-mode', form: 'notice', summary: text }` | 一手 |
 | `dsh-client-ui-chat/lib/client.js:4227-4239` | `kind:'plugin'` → transcript 行 role 为 `inject`、label 取 `plugin` 字段（即渲染为上下文行而非用户气泡） | 一手 |
 
+### 7.4 「请求通路停摆」现场抓取手册（方案 C）
+
+**适用症状**：面板变空/变旧、发消息不推进轮次（像断网 IM），但界面本身还能点（能切会话、能开弹层）。
+
+**结论先说：卡住时不要立刻重启服务。** 重启会抹掉唯一能区分"客户端侧"和"宿主/通路侧"的证据。
+
+现场按顺序做四件事，每件都记下时刻：
+
+1. **看 `dsh web` 终端**：有没有未捕获异常/栈（宿主若是"事件循环被同步占死"，往往同时 100% CPU；若是 await 死等，则 CPU ≈ 0）。
+2. **新开一个浏览器窗口**访问 `http://127.0.0.1:3080`（不是新标签页）：
+   - 新窗口正常 → **旧标签页/客户端侧**（旧页的 WS 或重连任务挂住）；
+   - 新窗口同样死 → **宿主或通路侧**。
+3. **任务管理器看 `node.exe` CPU**：100% → 同步死循环；≈0% → 死等（await 永不 settle）。
+4. **在旧标签页按 F5 刷新**：刷新后立刻正常 → 客户端侧；仍旧不答 → 宿主/通路侧。
+
+事后把这些磁盘证据交给我（都能复现分析）：
+
+| 检查 | 做法 | 判定 |
+|---|---|---|
+| 请求是否被宿主受理 | 扫全库会话日志里时间段内有没有 `agent/inbox/spliced` / `user/message` | 没有 ⇒ 请求**从未抵达宿主**（客户端侧或通路侧），不是"受理后卡住" |
+| 宿主是否还活着 | 同一时间段内有没有 `session/end-seed`（空闲会话卸载是宿主定时器在跑） | 有 ⇒ 进程活着、定时器在转 |
+| 客户端是否还活着 | 卡住期间能否切换会话/开弹层 | 能 ⇒ 标签页没死 |
+| 是否是机器级故障 | `Kernel-Power` 41 / `WHEA-Logger` / BugCheck(1001) 是否落在窗口内 | 落在窗口内 ⇒ 先修机器，别改代码 |
+| 面板的"旧数据"从哪来 | 子代理目录 RPC 失败时客户端保留 `previous.entries`，所以列表停在"上一次成功抓取"那一刻 | 列表只有 `prepare` ⇒ 上次成功在链刚起步时 |
+
+**2026-09-18 那次事故的记录（供对照，勿重复推导）**：
+
+- 链 08:07:02 起跑、**08:08:22.407** 结算并回投；回复 turn **08:08:27.346** 结束（notifier 最后一条通知 08:08:27.350）。
+- **08:08:27 → 08:13:35 全库零事件**；用户在现场发送的消息**在磁盘上无任何痕迹**（该会话日志完整到 08:21:24 的 end-seed）。
+- **08:13:35–47 六个会话被逐个 end-seed**（跨 3 个工作区，间隔约 2 秒，之前无活动）⇒ 宿主进程与定时器当时都在跑。
+- 08:21:20 / 08:23:17 两次 `dsh web` 启动（用户重启）。
+- 无机器级故障：窗口内无 WHEA/BugCheck/Kernel-Power 41；唯一一次非正常关机是当天 00:46:49（06:57 开机），与本次无关。08:22 那批 WER 是**旧转储补报**。
+- 因此：**不是我的面板逻辑**（90 秒 TTL 与作用域都已排除：结算后仅 31 秒，且两次验证作用域正确），而是**入站请求通路在链结束约 1 秒后停摆**。相关性很高，因果未证。
+
+**我自己代码里已确认的健壮性缺口（与本次根因无关，但会放大症状）**：`RunDock` 的轮询 `await load()` 一旦永不返回，就**不会再排下一次**（也没有缓存兜底），所以通路一断，面板会一直黑到页面刷新或重挂载。修法见待办 T10。
+
 ---
 
 ## 8. 状态快照与续接方式
@@ -282,7 +320,8 @@ for (let n = 0; n < offs.length; n++) {
 **已提交**（分支 `feat/chain-run-projection`）：
 
 ```
-9ff19cd feat(runs): report settled chain runs back into their session   ← 本轮：面板修复 + 方案 A（23 文件）
+546d167 fix(client): match the run panel to DSH's dock style and make close stick   ← 本轮：样式统一 + 关闭生效（21 文件）
+9ff19cd feat(runs): report settled chain runs back into their session
 6a2421f docs: document detached chain runs and the run dock
 d0f2362 feat(client): add the chain run dock
 837a858 feat(host): run chain templates as detached runs
@@ -303,10 +342,10 @@ d0f2362 feat(client): add the chain run dock
 文档       README.md、AGENTS.md、docs/chain-run-followups.md（本文件）
 ```
 
-**本轮（用户反馈后，未提交）**：面板样式统一 + 「关闭」真正生效
+`546d167` 的内容分组（面板样式统一 + 「关闭」真正生效）：
 
 ```
-UI 重做    src/client/{RunDock.tsx, run-dock.css.ts, icons.tsx}
+UI 重做    src/client/{RunDock.tsx, run-dock.css.ts, icons.tsx, run-view.ts}
            —— 面板抄 TodoPanel（0.5px 边框 / --dsw-specific-tip / 12px 圆角 /
               宽度 calc(--dsh-composer-*) / 字形+标题+计数头部），行抄队列 dock
               （36px、13px 文本、28px 圆形操作按钮）；进度条换成状态字形
@@ -315,12 +354,19 @@ UI 重做    src/client/{RunDock.tsx, run-dock.css.ts, icons.tsx}
            src/typert.host.ts、src/typert.remote-client.ts
            src/types/runs.ts、src/engine/run-registry.ts（dismiss）
            src/client/{remote-contribution.ts, SmartCommandsSection.tsx}
-测试       tests/{run-registry.spec.ts, run-api.spec.ts, client-remote.spec.ts}
+测试       tests/{run-view.spec.ts, run-registry.spec.ts, run-api.spec.ts, client-remote.spec.ts}
 文档       README.md、AGENTS.md、本文件
 ```
 
-**未提交**：上表全部（等用户说「提交」）。
+**未提交**（本轮：面板默认折叠 + §7.4 手册）：
+
+```
+ M src/client/RunDock.tsx          (collapsed 默认 true —— 头部即摘要，结算后只占一行)
+ M AGENTS.md                       (RunDock 默认折叠)
+ M README.md                       (面板默认折叠、点头部展开)
+ M docs/chain-run-followups.md     (§7.4 现场抓取手册 + T10/T11 + 本快照)
+```
 
 **本地（gitignored，不入库）**：`.dsh/commands/chain-test.md` —— `/chain-test` 测试链（4 步约 45 秒；顺序 + 并行 2 路；`as`/`{outputs.x}`/`{previous}` 绑定；body 内写有把 `loop` 改 2 验证轮次、给第 2 步加 `worktree true` 验证隔离工作树的改法）。
 
-**续接方式**：剩下的是 T5（上游 issue）、T6（现场验证）、T7（决策）、T9（可选）。T6 需**重启 `dsh web` 进程**（宿主改动）＋刷新页面（客户端改动），验证顺序：重启 → 新建会话 → 跑一次 `/chain-test` → 等面板结算 → 看会话里是否出现 `smart-commands` 上下文行 → 切走／刷新看会话是否仍在列表。若会话仍消失，则 §2.6 的 P1/P2 分支需要现场打印 `summary.blank` 来分离。**关闭按钮的验证同样是宿主侧行为**（`dismissRun` 在宿主进程里），只刷新页面验证不了。
+**续接方式**：T5/T11 上游、T6 现场验证、T7 决策、T9 可选、T10 面板健壮性（等 C 抓到现场后再决定改法）。§7.4 是卡死时的现场手册——**先别重启**，四步取证后再重启。老 T6 的验证顺序：重启 `dsh web` → 新建会话 → 跑一次 `/chain-test` → 等面板结算 → 看会话里是否出现 `smart-commands` 上下文行 → 切走／刷新看会话是否仍在列表。若会话仍消失，则 §2.6 的 P1/P2 分支需要现场打印 `summary.blank` 来分离。**关闭按钮的验证同样是宿主侧行为**（`dismissRun` 在宿主进程里），只刷新页面验证不了。

@@ -113,7 +113,11 @@ export function RunDock(props: RunDockProps): ReactNode {
 
   const [runs, setRuns] = useState<ChainRunRecord[]>([])
   const [now, setNow] = useState(() => Date.now())
-  const [collapsed, setCollapsed] = useState(false)
+  // Collapsed by default, like the todo dock: the header carries the at-a-glance
+  // state (`1 进行中 · 2 已完成`), so a settled run costs one line above the
+  // composer instead of a list the user did not ask for. Opening is one click and
+  // is remembered for as long as the panel stays mounted.
+  const [collapsed, setCollapsed] = useState(true)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set())
 
