@@ -254,7 +254,8 @@ function parseRunInventory(value: unknown) {
   return { runs: record.runs.map((run, index) => parseRunRecord(run, `runs[${index}]`)) }
 }
 
-function parseRunCancel(value: unknown) {
+/** `cancelRun` / `dismissRun` share one request shape: a run id and an optional session scope guard. */
+function parseRunTarget(value: unknown) {
   const record = asObject(value, 'request')
   return {
     runId: asString(record.runId, 'request.runId'),
@@ -262,7 +263,8 @@ function parseRunCancel(value: unknown) {
   }
 }
 
-function parseRunCancelResult(value: unknown) {
+/** Shared result shape for both run verbs: an outcome, the id, or a reason. */
+function parseRunOutcome(value: unknown) {
   const record = asObject(value, 'result')
   return {
     ok: asBoolean(record.ok, 'result.ok'),
@@ -289,7 +291,9 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
     ChainRunRecord: schema(value => parseRunRecord(value, 'ChainRunRecord')),
     ChainRunScope: schema(parseRunScope),
     ChainRunInventory: schema(parseRunInventory),
-    ChainRunCancelRequest: schema(parseRunCancel),
-    ChainRunCancelResult: schema(parseRunCancelResult),
+    ChainRunCancelRequest: schema(parseRunTarget),
+    ChainRunCancelResult: schema(parseRunOutcome),
+    ChainRunDismissRequest: schema(parseRunTarget),
+    ChainRunDismissResult: schema(parseRunOutcome),
   }),
 }

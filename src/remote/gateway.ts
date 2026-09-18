@@ -20,6 +20,8 @@ import type {
 import type {
   ChainRunCancelRequest,
   ChainRunCancelResult,
+  ChainRunDismissRequest,
+  ChainRunDismissResult,
   ChainRunInventory,
   ChainRunScope,
 } from '../types/runs.js'
@@ -37,6 +39,8 @@ export type {
 export type {
   ChainRunCancelRequest,
   ChainRunCancelResult,
+  ChainRunDismissRequest,
+  ChainRunDismissResult,
   ChainRunInventory,
   ChainRunRecord,
   ChainRunScope,
@@ -126,6 +130,11 @@ export class SmartCommandsGateway extends TypertRemoteService {
   @Remote('cancelRun')
   cancelRun(request: ChainRunCancelRequest): Promise<ChainRunCancelResult> {
     return runApiOf().cancelRun(request)
+  }
+
+  @Remote('dismissRun')
+  dismissRun(request: ChainRunDismissRequest): Promise<ChainRunDismissResult> {
+    return runApiOf().dismissRun(request)
   }
 }
 

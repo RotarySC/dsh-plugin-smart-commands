@@ -52,6 +52,124 @@ export function CloseIcon({ className }: { className?: string }): ReactNode {
 }
 
 /**
+ * 14x14 chain/flow glyph: one step feeding the next. Leads the run panel's
+ * header, where DSH's own docks lead with a glyph for what they contain.
+ */
+export function ChainIcon({ className }: { className?: string }): ReactNode {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    >
+      <circle cx="4" cy="3.5" r="1.6" stroke="currentColor" strokeWidth="1.25" />
+      <path
+        d="M4 5.1V10H8.4"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="10" cy="10" r="1.6" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  )
+}
+
+/**
+ * 14x14 status glyphs for one run row, in the same outline weight as DSH's own
+ * dock glyphs: a spinner while live, then a check, a cross, or a dash.
+ */
+export function SpinnerIcon({ className }: { className?: string }): ReactNode {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    >
+      <circle cx="7" cy="7" r="4.75" stroke="currentColor" strokeWidth="1.25" opacity="0.25" />
+      <path
+        d="M7 2.25A4.75 4.75 0 0 1 11.75 7"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+export function CheckIcon({ className }: { className?: string }): ReactNode {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    >
+      <path
+        d="M3 7.4L5.6 10L11 4.4"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export function CrossIcon({ className }: { className?: string }): ReactNode {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    >
+      <path
+        d="M4 4L10 10M10 4L4 10"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+export function DashIcon({ className }: { className?: string }): ReactNode {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+      style={{ display: 'inline-block', verticalAlign: 'middle' }}
+    >
+      <path d="M3.5 7H10.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/**
  * Nerd Font Prompt / Terminal / Message Icon
  * Standard Prompt / Terminal glyph 󰞋 / 󰘳 or Terminal Prompt SVG
  */

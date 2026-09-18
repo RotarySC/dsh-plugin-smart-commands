@@ -1,32 +1,51 @@
+/**
+ * Run panel skin.
+ *
+ * Deliberately not an invented style: every number here is copied from the
+ * docks DSH itself puts in this slot — `TodoPanel.module.css` for the bordered
+ * panel with a header and a scrollable list, and the queue dock's row for a
+ * list entry carrying text, status, and 28px round actions. Widths use the same
+ * composer variables, so the panel lines up with the 任务/goal bars instead of
+ * spanning wider than them.
+ */
 export const RUN_DOCK_CSS = `
 .sc-run-dock {
   box-sizing: border-box;
-  width: 100%;
-  background: var(--dsw-specific-input-major, rgba(127, 127, 127, 0.08));
+  width: calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));
+  max-width: calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));
   border: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.24));
-  border-radius: 10px;
-  padding: 4px 6px 6px;
-  font-size: 11px;
-  line-height: 16px;
+  background: var(--dsw-specific-tip, rgba(127, 127, 127, 0.08));
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  border-radius: 12px;
+  flex: none;
+  margin: 0 auto;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
   font-family: inherit;
-  color: var(--dsw-alias-label-primary, inherit);
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.sc-run-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 12px;
 }
 
 .sc-run-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 20px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0 2px;
-  color: var(--dsw-alias-label-secondary, inherit);
-  font-size: 11px;
-  font-weight: 500;
-  font-family: inherit;
+  gap: 10px;
   width: 100%;
+  padding: 0;
+  background: 0 0;
+  border: none;
   text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
 }
 
 .sc-run-head:focus-visible {
@@ -35,202 +54,212 @@ export const RUN_DOCK_CSS = `
   border-radius: 6px;
 }
 
-.sc-run-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--dsw-alias-state-business-tertiary, rgba(74, 125, 255, 0.16));
-  color: var(--dsw-alias-label-primary-bluish, #4a7dff);
-  font-size: 11px;
-  font-weight: 600;
+.sc-run-lead {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary, #8b949e);
+}
+
+.sc-run-title {
+  flex: none;
+  color: var(--dsw-alias-label-primary, inherit);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.sc-run-summary {
+  min-width: 0;
+  flex: auto;
+  color: var(--dsw-alias-label-tertiary, #8b949e);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .sc-run-chevron {
-  margin-left: auto;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary, #8b949e);
   transition: transform 0.12s ease;
 }
 
 .sc-run-chevron[data-collapsed='true'] {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 
 .sc-run-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 3px;
+  gap: 8px;
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
 }
 
-.sc-run-row {
+.sc-run-item {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 4px 6px;
-  border-radius: 7px;
-  background: var(--dsw-alias-bg-base, rgba(127, 127, 127, 0.06));
-  box-shadow: inset 0 0 0 0.5px var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.2));
-}
-
-.sc-run-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 
+.sc-run-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 4px 5px 4px 12px;
+  border-radius: 8px;
+}
+
+.sc-run-glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-caption, #8b949e);
+}
+
+.sc-run-spin {
+  animation: sc-run-rotate 1s linear infinite;
+}
+
+.sc-run-row[data-status='running'] .sc-run-glyph {
+  color: var(--dsw-alias-state-business-primary, #4a7dff);
+}
+
+.sc-run-row[data-status='succeeded'] .sc-run-glyph {
+  color: var(--dsw-alias-state-success-primary, #2ea043);
+}
+
+.sc-run-row[data-status='failed'] .sc-run-glyph {
+  color: var(--dsw-alias-state-error-primary, #d9534f);
+}
+
 .sc-run-name {
-  font-weight: 600;
-  font-family: var(--ds-font-family-code, ui-monospace, SFMono-Regular, Menlo, monospace);
-  color: var(--dsw-alias-label-primary, inherit);
-  overflow: hidden;
+  flex: none;
+  max-width: 40%;
+  color: var(--dsw-alias-label-primary-dimmed, inherit);
+  font-size: 13px;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 40%;
+  overflow: hidden;
 }
 
 .sc-run-phase {
   min-width: 0;
-  overflow: hidden;
+  flex: auto;
+  color: var(--dsw-alias-label-tertiary, #8b949e);
+  font-size: 13px;
+  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-secondary, #8b949e);
+  overflow: hidden;
 }
 
 .sc-run-time {
-  margin-left: auto;
   flex: none;
   color: var(--dsw-alias-label-tertiary, #8b949e);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-.sc-run-status {
+.sc-run-actions {
   flex: none;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12));
-  color: var(--dsw-alias-label-secondary, #8b949e);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.sc-run-row[data-status='running'] .sc-run-status {
-  background: var(--dsw-alias-state-business-tertiary, rgba(74, 125, 255, 0.16));
-  color: var(--dsw-alias-label-primary-bluish, #4a7dff);
-}
-
-.sc-run-row[data-status='succeeded'] .sc-run-status {
-  background: var(--dsw-alias-state-success-tertiary, rgba(46, 160, 67, 0.16));
-  color: var(--dsw-alias-state-success-primary, #2ea043);
-}
-
-.sc-run-row[data-status='failed'] .sc-run-status {
-  background: var(--dsw-alias-state-error-tertiary, rgba(217, 83, 79, 0.16));
-  color: var(--dsw-alias-state-error-primary, #d9534f);
-}
-
-.sc-run-bar {
-  height: 2px;
-  border-radius: 2px;
-  overflow: hidden;
-  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.16));
-}
-
-.sc-run-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--dsw-alias-label-primary-bluish, #4a7dff);
-  transition: width 0.25s ease;
-}
-
-.sc-run-row[data-status='succeeded'] .sc-run-fill {
-  background: var(--dsw-alias-state-success-primary, #2ea043);
-}
-
-.sc-run-row[data-status='failed'] .sc-run-fill {
-  background: var(--dsw-alias-state-error-primary, #d9534f);
-}
-
-.sc-run-button {
-  flex: none;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  border: 0.5px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.28));
-  background: transparent;
-  color: var(--dsw-alias-label-secondary, inherit);
-  cursor: pointer;
-  font-size: 11px;
-  font-family: inherit;
-}
-
-.sc-run-button:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12));
-  color: var(--dsw-alias-label-primary, inherit);
-}
-
-.sc-run-button:focus-visible {
-  outline: 2px solid var(--dsw-alias-label-tertiary, #8b949e);
-  outline-offset: 1px;
-}
-
-.sc-run-close {
+.sc-run-action {
+  box-sizing: border-box;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  background: 0 0;
   border: none;
-  border-radius: 10px;
-  background: transparent;
+  border-radius: 999px;
   color: var(--dsw-alias-label-tertiary, #8b949e);
+  font-size: 13px;
+  line-height: 20px;
+  font-family: inherit;
   cursor: pointer;
 }
 
-.sc-run-close:hover {
-  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12));
-  color: var(--dsw-alias-label-primary, inherit);
+.sc-run-action[data-icon='true'] {
+  width: 28px;
+  padding: 0;
 }
 
-.sc-run-close:focus-visible {
+.sc-run-action:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.12));
+  color: var(--dsw-alias-label-secondary, inherit);
+}
+
+.sc-run-action:focus-visible {
   outline: 2px solid var(--dsw-alias-label-tertiary, #8b949e);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
 .sc-run-detail {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.2));
+  gap: 6px;
+  margin: 0 0 2px 26px;
   padding-top: 6px;
+  border-top: 0.5px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.2));
+}
+
+.sc-run-detail-head {
+  color: var(--dsw-alias-label-tertiary, #8b949e);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.sc-run-error,
+.sc-run-text,
+.sc-run-files {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .sc-run-error {
-  margin: 0;
   color: var(--dsw-alias-state-error-primary, #d9534f);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .sc-run-text {
-  margin: 0;
   max-height: 160px;
   overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: inherit;
-  color: var(--dsw-alias-label-secondary, #8b949e);
+  color: var(--dsw-alias-label-secondary, inherit);
 }
 
 .sc-run-files {
-  margin: 0;
   color: var(--dsw-alias-label-tertiary, #8b949e);
-  word-break: break-word;
+}
+
+@keyframes sc-run-rotate {
+  to { transform: rotate(360deg); }
 }
 `

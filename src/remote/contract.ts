@@ -11,6 +11,7 @@ export const SMART_COMMANDS_ENDPOINTS = [
   { method: 'writeKeywords', request: 'KeywordWriteRequest', result: 'KeywordMutationResult' },
   { method: 'listRuns', request: 'ChainRunScope', result: 'ChainRunInventory' },
   { method: 'cancelRun', request: 'ChainRunCancelRequest', result: 'ChainRunCancelResult' },
+  { method: 'dismissRun', request: 'ChainRunDismissRequest', result: 'ChainRunDismissResult' },
 ] as const
 
 export type SmartCommandsSchemaName =
@@ -31,6 +32,8 @@ export type SmartCommandsSchemaName =
   | 'ChainRunInventory'
   | 'ChainRunCancelRequest'
   | 'ChainRunCancelResult'
+  | 'ChainRunDismissRequest'
+  | 'ChainRunDismissResult'
 
 export interface SchemaLike<Output = unknown> {
   parse(value: unknown): Output

@@ -7,6 +7,7 @@ import {
   isLive,
   liveRunIds,
   runProgress,
+  runStatusCounts,
   visibleRuns,
 } from '../src/client/run-view.ts'
 
@@ -61,6 +62,28 @@ describe('run progress', () => {
     expect(currentStep(run({ steps: [step('scan', 0, 'done'), step('fix', 1, 'running')] }))?.name).toBe('fix')
     expect(currentStep(run({ steps: [step('scan', 0, 'done'), step('fix', 1, 'pending')] }))?.name).toBe('fix')
     expect(currentStep(run({ steps: [step('scan', 0, 'done')], status: 'succeeded' }))).toBeUndefined()
+  })
+})
+
+describe('run roster header counts', () => {
+  it('reports only the statuses present, most current first', () => {
+    const roster = [
+      run({ id: 'a', status: 'succeeded', endedAt: 2_000 }),
+      run({ id: 'b', status: 'running' }),
+      run({ id: 'c', status: 'succeeded', endedAt: 3_000 }),
+      run({ id: 'd', status: 'failed', endedAt: 4_000 }),
+      run({ id: 'e', status: 'cancelled', endedAt: 5_000 }),
+    ]
+    expect(runStatusCounts(roster)).toEqual([
+      { status: 'running', count: 1 },
+      { status: 'failed', count: 1 },
+      { status: 'succeeded', count: 2 },
+      { status: 'cancelled', count: 1 },
+    ])
+  })
+
+  it('accounts for nothing when the roster is empty', () => {
+    expect(runStatusCounts([])).toEqual([])
   })
 })
 

@@ -5,6 +5,8 @@ import type { InventoryTemplate, TemplateInventory, TemplateOrigin } from '../ty
 import type {
   ChainRunCancelRequest,
   ChainRunCancelResult,
+  ChainRunDismissRequest,
+  ChainRunDismissResult,
   ChainRunInventory,
   ChainRunScope,
 } from '../types/runs.js'
@@ -47,6 +49,7 @@ export interface SmartCommandsRemote {
   writeKeywords(request: KeywordWriteRequest): Promise<RemoteResult<KeywordMutationResult>>
   listRuns(request?: ChainRunScope): Promise<RemoteResult<ChainRunInventory>>
   cancelRun(request: ChainRunCancelRequest): Promise<RemoteResult<ChainRunCancelResult>>
+  dismissRun(request: ChainRunDismissRequest): Promise<RemoteResult<ChainRunDismissResult>>
 }
 
 export interface SmartCommandsSectionProps {

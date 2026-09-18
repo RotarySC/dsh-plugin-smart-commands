@@ -5,8 +5,8 @@
 > | 项 | 值 |
 > |---|---|
 > | 分支 | `feat/chain-run-projection` |
-> | 已提交 HEAD | `6a2421f`（host / client / docs 三笔） |
-> | 未提交改动 | 运行面板修复 + **方案 A 回投汇总**（见 §8） |
+> | 已提交 HEAD | `9ff19cd`（面板修复 + **方案 A 回投汇总**，23 文件；其下为 `6a2421f`/`d0f2362`/`837a858` 三笔 C 方向） |
+> | 未提交改动 | 仅本文件的 §8 状态快照（提交后回填） |
 > | 验证状态 | `npm run typecheck` ✅ · `npm test` 181 用例 / 23 文件 ✅ · `npm run build` ✅ |
 > | DSH 版本 | `0.1.6-alpha.1` |
 >
@@ -27,16 +27,17 @@
 | 运行表 | 每次分离运行一个 `AbortController` + 步骤进度；纯 JSON 快照；保留 20 条 / 10 分钟 | `src/engine/run-registry.ts` |
 | 执行 | `ChainExecutor.onStep` 上报步骤边界；`CommandRunner.startDetached()` 起跑即结算；`run(..., runId)` 把进度镜像进运行表 | `src/engine/chain-executor.ts`、`src/engine/command-runner.ts` |
 | 命令路径 | 斜杠 handler：有 `agent.id` 且模板含 `chain` → 分离；否则保持阻塞语义 | `src/plugin.ts` |
-| 远程 | `listRuns` / `cancelRun`（端点 7 → 9，`contract.ts` 单点传播三处绑定） | `src/remote/contract.ts`、`run-api.ts`、`gateway.ts` |
-| UI | `RunDock` 挂 `conversation.input.dock`（id `smart-commands.runs`）：轮次/步骤/耗时/进度条/取消/结果展开 | `src/client/RunDock.tsx`、`run-view.ts` |
+| 远程 | `listRuns` / `cancelRun` / `dismissRun`（端点 7 → 9 → 10，`contract.ts` 单点传播三处绑定） | `src/remote/contract.ts`、`run-api.ts`、`gateway.ts` |
+| UI | `RunDock` 挂 `conversation.input.dock`（id `smart-commands.runs`）：状态字形/状态·步骤/耗时/取消/结果展开/关闭 | `src/client/RunDock.tsx`、`run-view.ts`、`run-dock.css.ts` |
 | **回投** | 运行结算后向会话回投汇总（方案 A）：`ChainRunRegistry` 的 `onSettled` 观察点 → `HostAgent.notify` → `Agent.followup` | `src/engine/run-registry.ts`、`run-summary.ts`、`command-runner.ts`、`host/dsh-adapter.ts` |
 
-**运行面板的可见性规则**（`run-view.ts` 的 `visibleRuns`，本轮未提交的修复之后）：
+**运行面板的可见性规则**（`run-view.ts` 的 `visibleRuns`）：
 
 - 运行中的行**永不隐藏**（它是唯一的取消入口）
 - 未打开过的结束行 90 秒后自动消失
 - 打开过（点了「结果」）的行保留到用户点 `×` 关闭
-- 关闭是**客户端本地状态**：宿主仍持有该行直到自身保留窗口到期，刷新后可能再现
+- 关闭 = **宿主侧移除**（`dismissRun` → `ChainRunRegistry.dismiss`）：从运行表删除，切换会话 / 刷新页面 / 其它标签页都不会再现。运行中的行**不给**关闭入口，宿主也拒绝 —— 它承载唯一的取消按钮，必须先取消
+- 面板外观**沿用 DSH 自带 dock 的 token**（面板抄 `TodoPanel.module.css`，行抄队列 dock 的 36px 行 + 28px 圆形操作按钮），宽度用同一组 `--dsh-composer-*` 变量，因此与「任务」「目标」条对齐
 
 **硬约束（不可违反）**：进度**不能**用自定义 session 事件承载。`Session.append` 没有 `ignorable` 入口，而持久化读路径拒绝未知且非 ignorable 的事件类型 → 会让该会话重启后打不开。`dsh-session-projection` 只折叠已提交事件，也承载不了实时进度。
 
@@ -217,7 +218,7 @@ function sessionVisible(session, current, archived) {
 | # | 事项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
 | T1 | 裁定问题 A 走 A / B / C 哪个方案 | 决策 | — | ✅ **已拍板：方案 A** |
-| T2 | 提交运行面板修复 + 方案 A（见 §8 清单） | 提交 | T1 | **待执行**（等用户说「提交」） |
+| T2 | 提交运行面板修复 + 方案 A | 提交 | T1 | ✅ **已完成**（`9ff19cd`，23 文件） |
 | T3 | 方案 A：`startDetached` 结算后回投汇总 + 测试 | 实现 | T1 | ✅ **已完成**（`onSettled` → `notify`；新增 24 个用例） |
 | T4 | README 与 AGENTS 补充"新会话首条用斜杠命令"的限制 | 文档 | T1 | ✅ **已完成**（README「分离执行与运行面板」+ AGENTS 不变式两条） |
 | T5 | 向上游提 issue：`list.js:29` 未把 `command/run` 视为 engagement | 上游 | — | 挂起（方案 A 不替代它：其它斜杠命令仍会隐藏会话） |
@@ -281,40 +282,45 @@ for (let n = 0; n < offs.length; n++) {
 **已提交**（分支 `feat/chain-run-projection`）：
 
 ```
+9ff19cd feat(runs): report settled chain runs back into their session   ← 本轮：面板修复 + 方案 A（23 文件）
 6a2421f docs: document detached chain runs and the run dock
 d0f2362 feat(client): add the chain run dock
 837a858 feat(host): run chain templates as detached runs
 9480b5f chore: derive typert test order from the contract      ← 曾合入 master
 ```
 
-**未提交（等下一批一起提交）**：
+`9ff19cd` 的内容分组：
 
 ```
- M AGENTS.md                     (RunDock roster + 回投汇总两条不变式)
- M README.md                     (分离执行与运行面板一节 + 三个插槽 + 新配置项)
- M package.json                  (smartCommands.notifyOnRunSettle)
- M src/client/RunDock.tsx        (紧凑化 + 每条终态可 × 关闭 + formatDuration 改从共享模块导入)
- M src/client/run-dock.css.ts    (字号/间距/进度条收紧 + .sc-run-close)
- M src/client/run-view.ts        (visibleRuns: ttl/dismissed/pinned；formatDuration 迁出)
- M src/client/icons.tsx          (CloseIcon)
- M src/client/locales.ts         (runDismiss)
- M src/engine/command-runner.ts  (startDetached 结算回投)
- M src/engine/run-registry.ts    (onSettled 观察点；终态步骤归位；cancelAll 静默)
- M src/host/dsh-adapter.ts       (HostAgent.notify：plugin/notice 消息)
- M src/plugin.ts                 (readConfig: notifyOnRunSettle)
- M src/types/host.ts             (notify + notifyOnRunSettle)
- M src/types/runs.ts             (ChainRunStartInput.onSettled)
- M tests/command-runner.spec.ts  (+5 回投用例；harness 支持 config 覆盖)
- M tests/dsh-adapter.spec.ts     (+2 notify 用例)
- M tests/run-registry.spec.ts    (+3 观察点用例)
- M tests/run-view.spec.ts        (formatDuration 用例迁出)
-?? docs/chain-run-followups.md   (本文件)
-?? src/engine/run-summary.ts     (结算汇总格式化)
-?? src/run-format.ts             (宿主/客户端共享的时长与首行格式化)
-?? tests/run-summary.spec.ts     (12 用例)
-?? tests/run-format.spec.ts      (3 用例)
+面板修复   src/client/{RunDock.tsx, run-dock.css.ts, run-view.ts, icons.tsx, locales.ts}
+           tests/run-view.spec.ts
+方案 A     src/engine/{run-registry.ts, run-summary.ts, command-runner.ts}
+           src/host/dsh-adapter.ts
+           src/types/{host.ts, runs.ts}
+           src/plugin.ts、src/run-format.ts、package.json
+           tests/{run-summary.spec.ts, run-format.spec.ts, run-registry.spec.ts,
+                  command-runner.spec.ts, dsh-adapter.spec.ts}
+文档       README.md、AGENTS.md、docs/chain-run-followups.md（本文件）
 ```
+
+**本轮（用户反馈后，未提交）**：面板样式统一 + 「关闭」真正生效
+
+```
+UI 重做    src/client/{RunDock.tsx, run-dock.css.ts, icons.tsx}
+           —— 面板抄 TodoPanel（0.5px 边框 / --dsw-specific-tip / 12px 圆角 /
+              宽度 calc(--dsh-composer-*) / 字形+标题+计数头部），行抄队列 dock
+              （36px、13px 文本、28px 圆形操作按钮）；进度条换成状态字形
+              （spinner/对勾/叉/横杠），绿色 2px 条与带边框药丸按钮删除
+新端点     src/remote/{contract.ts, schemas.ts, run-api.ts, gateway.ts}
+           src/typert.host.ts、src/typert.remote-client.ts
+           src/types/runs.ts、src/engine/run-registry.ts（dismiss）
+           src/client/{remote-contribution.ts, SmartCommandsSection.tsx}
+测试       tests/{run-registry.spec.ts, run-api.spec.ts, client-remote.spec.ts}
+文档       README.md、AGENTS.md、本文件
+```
+
+**未提交**：上表全部（等用户说「提交」）。
 
 **本地（gitignored，不入库）**：`.dsh/commands/chain-test.md` —— `/chain-test` 测试链（4 步约 45 秒；顺序 + 并行 2 路；`as`/`{outputs.x}`/`{previous}` 绑定；body 内写有把 `loop` 改 2 验证轮次、给第 2 步加 `worktree true` 验证隔离工作树的改法）。
 
-**续接方式**：T2 说「提交」即执行；T6 需要现场验证（宿主侧改动需**重启 `dsh web` 进程**，纯客户端改动**刷新页面**即可），验证顺序建议：重启 → 新建会话 → 跑一次 `/chain-test` → 等面板结算 → 看会话里是否出现 `smart-commands` 上下文行 → 切走／刷新看会话是否仍在列表。
+**续接方式**：剩下的是 T5（上游 issue）、T6（现场验证）、T7（决策）、T9（可选）。T6 需**重启 `dsh web` 进程**（宿主改动）＋刷新页面（客户端改动），验证顺序：重启 → 新建会话 → 跑一次 `/chain-test` → 等面板结算 → 看会话里是否出现 `smart-commands` 上下文行 → 切走／刷新看会话是否仍在列表。若会话仍消失，则 §2.6 的 P1/P2 分支需要现场打印 `summary.blank` 来分离。**关闭按钮的验证同样是宿主侧行为**（`dismissRun` 在宿主进程里），只刷新页面验证不了。

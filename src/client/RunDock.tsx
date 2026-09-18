@@ -3,10 +3,18 @@ import type { ChainRunRecord, ChainRunScope, ChainRunStatus } from '../types/run
 import type { SmartCommandsRemote } from './SmartCommandsSection.js'
 import type { SmartCommandsLocaleKey } from './locales.js'
 import { getActiveSmartCommandsConnect } from './connect.js'
-import { ChevronDownIcon, CloseIcon } from './icons.js'
+import {
+  ChainIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  CrossIcon,
+  DashIcon,
+  SpinnerIcon,
+} from './icons.js'
 import { RUN_DOCK_CSS } from './run-dock.css.js'
 import { formatDuration } from '../run-format.js'
-import { currentStep, elapsedMs, isLive, runProgress, visibleRuns } from './run-view.js'
+import { currentStep, elapsedMs, isLive, runProgress, runStatusCounts, visibleRuns } from './run-view.js'
 
 const STYLE_ID = '@deepseek-ai/dsh-plugin-smart-commands/run-dock.css'
 /** A live run refreshes every second so its elapsed clock and step tick. */
@@ -61,14 +69,38 @@ function statusText(t: RunDockProps['t'], status: ChainRunStatus): string {
   return t('runStatusCancelled')
 }
 
+/** One run's state glyph, in the outline weight DSH's own dock glyphs use. */
+function statusGlyph(status: ChainRunStatus): ReactNode {
+  if (status === 'running') return <SpinnerIcon className="sc-run-spin" />
+  if (status === 'succeeded') return <CheckIcon />
+  if (status === 'failed') return <CrossIcon />
+  return <DashIcon />
+}
+
+/**
+ * Header account, shaped like the todo dock's `8 已完成`: the counts of the
+ * statuses actually present, most current first (see `runStatusCounts`).
+ */
+function summaryText(t: RunDockProps['t'], roster: readonly ChainRunRecord[]): string {
+  return runStatusCounts(roster)
+    .map(({ status, count }) => `${count} ${statusText(t, status)}`)
+    .join(' · ')
+}
+
 /**
  * Live view of detached chain runs, docked above the composer card.
  *
  * A chain slash command settles immediately (so the composer never freezes),
  * which means this panel — not the command transaction — is where progress and
- * cancellation live. It polls the plugin's own `listRuns`/`cancelRun` remote;
- * a failed read renders nothing rather than reporting an error, because the
- * panel is an enhancement over a fully working command surface.
+ * cancellation live. It polls the plugin's own `listRuns`/`cancelRun`/
+ * `dismissRun` remote; a failed read renders nothing rather than reporting an
+ * error, because the panel is an enhancement over a fully working command
+ * surface.
+ *
+ * Styling follows the docks DSH already puts in this slot rather than inventing
+ * one: the panel is `TodoPanel` (bordered tip surface, glyph + title + count
+ * header, scrollable list) and a row is the queue dock's entry (36px, text
+ * status, 28px round actions).
  */
 export function RunDock(props: RunDockProps): ReactNode {
   const { t, api, connect, sessionId, useSession } = props
@@ -145,11 +177,26 @@ export function RunDock(props: RunDockProps): ReactNode {
       : run))
   }, [api, activeSessionId])
 
-  const dismiss = useCallback((id: string): void => {
-    // Local-only by design: the host keeps the row (and its result) until its
-    // own retention window expires, so a refresh can still bring it back.
+  const dismiss = useCallback(async (id: string): Promise<void> => {
+    // Hide now, then have the host drop the row from the table. Hiding alone
+    // would only last this mount: the panel is remounted per session, and the
+    // next `listRuns` would list the row again.
     setDismissed(previous => new Set(previous).add(id))
-  }, [])
+    let remote: SmartCommandsRemote | undefined
+    try {
+      remote = await resolveRemote(api, connectRef.current)
+    } catch {
+      remote = undefined
+    }
+    // `dismissRun` is guarded because a newer bundle can meet an older host,
+    // whose remote object has no such method.
+    if (!remote || typeof remote.dismissRun !== 'function') return
+    try {
+      await remote.dismissRun(activeSessionId ? { runId: id, sessionId: activeSessionId } : { runId: id })
+    } catch {
+      // Unreachable host: the row stays hidden for this mount and may return.
+    }
+  }, [api, activeSessionId])
 
   // A row the user opened stays put until dismissed; an unopened settled row
   // clears itself after FINISHED_VISIBLE_MS.
@@ -157,109 +204,100 @@ export function RunDock(props: RunDockProps): ReactNode {
   const roster = visibleRuns(runs, now, { dismissed, pinned })
   if (roster.length === 0) return null
 
-  const liveCount = roster.filter(isLive).length
   return (
     <section className="sc-run-dock" aria-label={t('runPanelTitle')}>
-      <button
-        type="button"
-        className="sc-run-head"
-        aria-expanded={!collapsed}
-        onClick={() => setCollapsed(value => !value)}
-      >
-        <span>{t('runPanelTitle')}</span>
-        {liveCount > 0 && <span className="sc-run-count">{liveCount}</span>}
-        <ChevronDownIcon className="sc-run-chevron" />
-      </button>
-      {!collapsed && (
-        <div className="sc-run-list">
-          {roster.map(run => {
-            const progress = runProgress(run)
-            const live = isLive(run)
-            const step = currentStep(run)
-            const detail = Boolean(run.text || run.error || run.files.length > 0)
-            const open = expanded[run.id] === true
-            const position = progress.total === 0
-              ? undefined
-              : `${Math.min(progress.done + 1, progress.total)}/${progress.total}${step ? ` · ${step.name}` : ''}`
-            const round = run.rounds > 1
-              ? `${t('runRoundLabel')} ${run.round}/${run.rounds}`
-              : undefined
-            const phase = [round, position].filter(Boolean).join(' · ')
-            const phaseLabel = [
-              round,
-              progress.total === 0 ? undefined : `${t('runStepLabel')} ${Math.min(progress.done + 1, progress.total)}`,
-              step?.name,
-            ].filter(Boolean).join(' · ')
-            return (
-              <div key={run.id} className="sc-run-row" data-status={run.status}>
-                <div className="sc-run-line">
-                  <span className="sc-run-name" title={run.command}>{run.command}</span>
-                  <span className="sc-run-status">{statusText(t, run.status)}</span>
-                  {phase !== '' && (
+      <div className="sc-run-body">
+        <button
+          type="button"
+          className="sc-run-head"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed(value => !value)}
+        >
+          <span className="sc-run-lead"><ChainIcon /></span>
+          <span className="sc-run-title">{t('runPanelTitle')}</span>
+          <span className="sc-run-summary">{summaryText(t, roster)}</span>
+          <span className="sc-run-chevron" data-collapsed={collapsed}>
+            <ChevronDownIcon />
+          </span>
+        </button>
+        {!collapsed && (
+          <ul className="sc-run-list">
+            {roster.map(run => {
+              const progress = runProgress(run)
+              const live = isLive(run)
+              const step = currentStep(run)
+              const detail = Boolean(run.text || run.error || run.files.length > 0)
+              const open = expanded[run.id] === true
+              const position = progress.total === 0
+                ? undefined
+                : `${Math.min(progress.done + 1, progress.total)}/${progress.total}${step ? ` · ${step.name}` : ''}`
+              const round = run.rounds > 1
+                ? `${t('runRoundLabel')} ${run.round}/${run.rounds}`
+                : undefined
+              const state = [statusText(t, run.status), round, position].filter(Boolean).join(' · ')
+              return (
+                <li key={run.id} className="sc-run-item">
+                  <div className="sc-run-row" data-status={run.status}>
+                    <span className="sc-run-glyph" aria-hidden="true">{statusGlyph(run.status)}</span>
+                    <span className="sc-run-name" title={run.command}>{run.command}</span>
                     <span
                       className="sc-run-phase"
-                      title={phaseLabel}
+                      title={[statusText(t, run.status), round, position].filter(Boolean).join(' · ')}
                       {...live ? { 'aria-live': 'polite' as const } : {}}
                     >
-                      {phase}
+                      {state}
                     </span>
-                  )}
-                  <span className="sc-run-time">{formatDuration(elapsedMs(run, now))}</span>
-                  {live && (
-                    <button
-                      type="button"
-                      className="sc-run-button"
-                      aria-label={`${t('cancel')} ${run.command}`}
-                      onClick={() => { void cancel(run.id) }}
-                    >
-                      {t('cancel')}
-                    </button>
-                  )}
-                  {!live && detail && (
-                    <button
-                      type="button"
-                      className="sc-run-button"
-                      aria-expanded={open}
-                      onClick={() => setExpanded(previous => ({ ...previous, [run.id]: !open }))}
-                    >
-                      {open ? t('runCollapse') : t('runExpand')}
-                    </button>
-                  )}
-                  {!live && (
-                    <button
-                      type="button"
-                      className="sc-run-close"
-                      aria-label={`${t('runDismiss')} ${run.command}`}
-                      onClick={() => dismiss(run.id)}
-                    >
-                      <CloseIcon />
-                    </button>
-                  )}
-                </div>
-                <div
-                  className="sc-run-bar"
-                  role="progressbar"
-                  aria-label={run.command}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={progress.percent}
-                >
-                  <span className="sc-run-fill" style={{ width: `${progress.percent}%` }} />
-                </div>
-                {open && detail && (
-                  <div className="sc-run-detail">
-                    {run.error && <p className="sc-run-error">{run.error}</p>}
-                    {run.text && <pre className="sc-run-text">{run.text}</pre>}
-                    {run.files.length > 0 && (
-                      <p className="sc-run-files">{t('runFiles')}: {run.files.join(', ')}</p>
-                    )}
+                    <span className="sc-run-time">{formatDuration(elapsedMs(run, now))}</span>
+                    <span className="sc-run-actions">
+                      {live && (
+                        <button
+                          type="button"
+                          className="sc-run-action"
+                          aria-label={`${t('cancel')} ${run.command}`}
+                          onClick={() => { void cancel(run.id) }}
+                        >
+                          {t('cancel')}
+                        </button>
+                      )}
+                      {!live && detail && (
+                        <button
+                          type="button"
+                          className="sc-run-action"
+                          aria-expanded={open}
+                          onClick={() => setExpanded(previous => ({ ...previous, [run.id]: !open }))}
+                        >
+                          {open ? t('runCollapse') : t('runExpand')}
+                        </button>
+                      )}
+                      {!live && (
+                        <button
+                          type="button"
+                          className="sc-run-action"
+                          data-icon="true"
+                          aria-label={`${t('runDismiss')} ${run.command}`}
+                          title={t('runDismiss')}
+                          onClick={() => { void dismiss(run.id) }}
+                        >
+                          <CloseIcon />
+                        </button>
+                      )}
+                    </span>
                   </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+                  {open && detail && (
+                    <div className="sc-run-detail">
+                      {run.error && <p className="sc-run-error">{run.error}</p>}
+                      {run.text && <pre className="sc-run-text">{run.text}</pre>}
+                      {run.files.length > 0 && (
+                        <p className="sc-run-files">{t('runFiles')}: {run.files.join(', ')}</p>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </section>
   )
 }

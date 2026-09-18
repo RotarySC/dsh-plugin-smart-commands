@@ -10,6 +10,11 @@ function fakeRemote(): SmartCommandsRemote {
     write: async () => ({ ok: true, value: { ok: true } }),
     deleteTemplate: async () => ({ ok: true, value: { ok: true } }),
     copy: async () => ({ ok: true, value: { ok: true } }),
+    listKeywords: async () => ({ ok: true, value: { categories: [], errors: [] } }),
+    writeKeywords: async () => ({ ok: true, value: { ok: true } }),
+    listRuns: async () => ({ ok: true, value: { runs: [] } }),
+    cancelRun: async () => ({ ok: true, value: { ok: true } }),
+    dismissRun: async () => ({ ok: true, value: { ok: true } }),
   }
 }
 
@@ -160,5 +165,16 @@ describe('client remote mount', () => {
     expect(descriptor!.result.schema.parse({ ok: false, error: 'unknown run: run-1' }))
       .toEqual({ ok: false, error: 'unknown run: run-1' })
     expect(() => descriptor!.parameters[0].codec.schema.parse({})).toThrow()
+  })
+
+  it('parses dismiss requests and result envelopes through the client-side descriptors', () => {
+    const descriptor = TYPERT_REMOTE.descriptors.find(item => item.method === 'dismissRun')
+    expect(descriptor).toBeDefined()
+    expect(descriptor!.parameters[0].codec.typeSymbol).toContain('ChainRunDismissRequest')
+    expect(descriptor!.result.typeSymbol).toContain('ChainRunDismissResult')
+    expect(descriptor!.parameters[0].codec.schema.parse({ runId: 'run-1', sessionId: 's1' }))
+      .toEqual({ runId: 'run-1', sessionId: 's1' })
+    expect(descriptor!.result.schema.parse({ ok: true, runId: 'run-1' })).toEqual({ ok: true, runId: 'run-1' })
+    expect(() => descriptor!.parameters[0].codec.schema.parse({ runId: 7 })).toThrow()
   })
 })

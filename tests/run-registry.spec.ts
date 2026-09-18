@@ -293,4 +293,36 @@ describe('ChainRunRegistry', () => {
     expect(() => registry.finish(handle.id, { status: 'succeeded' })).not.toThrow()
     expect(registry.get(handle.id)!.status).toBe('succeeded')
   })
+
+  it('drops a settled run on dismiss so no later list can show it again', () => {
+    const { registry } = harness()
+    const handle = startRun(registry)
+    registry.finish(handle.id, { status: 'succeeded', text: 'done' })
+
+    expect(registry.dismiss(handle.id, 's1')).toEqual({ ok: true, runId: handle.id })
+    expect(registry.get(handle.id)).toBeUndefined()
+    expect(registry.list()).toEqual([])
+    expect(registry.dismiss(handle.id)).toEqual({ ok: false, error: `unknown run: ${handle.id}` })
+  })
+
+  it('refuses to dismiss a live run, a foreign run, or an unknown one', () => {
+    const { registry } = harness()
+    const handle = startRun(registry)
+
+    expect(registry.dismiss(handle.id, 'other')).toEqual({ ok: false, error: 'run belongs to another session' })
+    expect(registry.dismiss(handle.id, 's1')).toEqual({ ok: false, error: 'run is still running; cancel it first' })
+    expect(registry.dismiss('missing')).toEqual({ ok: false, error: 'unknown run: missing' })
+    // A refused dismiss never disturbs the run itself.
+    expect(registry.get(handle.id)!.status).toBe('running')
+    expect(handle.signal.aborted).toBe(false)
+  })
+
+  it('dismisses a cancelled run once the cancel settled it', () => {
+    const { registry } = harness()
+    const handle = startRun(registry)
+    registry.cancel(handle.id, 's1')
+
+    expect(registry.dismiss(handle.id, 's1')).toEqual({ ok: true, runId: handle.id })
+    expect(registry.list()).toEqual([])
+  })
 })

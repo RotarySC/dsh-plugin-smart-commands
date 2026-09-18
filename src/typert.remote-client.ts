@@ -5,6 +5,8 @@ import {
   catalogScopeSchema,
   chainRunCancelRequestSchema,
   chainRunCancelResultSchema,
+  chainRunDismissRequestSchema,
+  chainRunDismissResultSchema,
   chainRunInventorySchema,
   chainRunRecordSchema,
   chainRunScopeSchema,
@@ -37,6 +39,8 @@ import type {
 import type {
   ChainRunCancelRequest,
   ChainRunCancelResult,
+  ChainRunDismissRequest,
+  ChainRunDismissResult,
   ChainRunInventory,
   ChainRunScope,
 } from './types/runs.js'
@@ -61,6 +65,8 @@ export const TYPERT_REMOTE: TypertRemoteContribution = {
     ChainRunInventory: chainRunInventorySchema,
     ChainRunCancelRequest: chainRunCancelRequestSchema,
     ChainRunCancelResult: chainRunCancelResultSchema,
+    ChainRunDismissRequest: chainRunDismissRequestSchema,
+    ChainRunDismissResult: chainRunDismissResultSchema,
   }),
 }
 
@@ -77,6 +83,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     writeKeywords: (request: KeywordWriteRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<KeywordMutationResult>>
     listRuns: (request?: ChainRunScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunInventory>>
     cancelRun: (request: ChainRunCancelRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunCancelResult>>
+    dismissRun: (request: ChainRunDismissRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunDismissResult>>
   }
   interface TypertRemoteMap {
     'smartCommands/list': (request?: CatalogScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<TemplateInventory>>
@@ -88,6 +95,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'smartCommands/writeKeywords': (request: KeywordWriteRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<KeywordMutationResult>>
     'smartCommands/listRuns': (request?: ChainRunScope) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunInventory>>
     'smartCommands/cancelRun': (request: ChainRunCancelRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunCancelResult>>
+    'smartCommands/dismissRun': (request: ChainRunDismissRequest) => Promise<import('@deepseek-ai/dsh-typert-protocol').RemoteResult<ChainRunDismissResult>>
   }
   interface TypertRemoteNamespaceMap {
     smartCommands: TypertRemoteNamespaceSmartCommands

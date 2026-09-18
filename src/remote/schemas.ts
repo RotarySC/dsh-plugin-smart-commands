@@ -164,3 +164,14 @@ export const chainRunCancelResultSchema = z.object({
   error: z.string().optional(),
 })
 
+export const chainRunDismissRequestSchema = z.object({
+  runId: z.string(),
+  sessionId: z.string().min(1).optional(),
+})
+
+export const chainRunDismissResultSchema = z.object({
+  ok: z.boolean(),
+  runId: z.string().optional(),
+  error: z.string().optional(),
+})
+

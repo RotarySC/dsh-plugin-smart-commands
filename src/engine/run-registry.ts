@@ -1,5 +1,6 @@
 import type {
   ChainRunCancelResult,
+  ChainRunDismissResult,
   ChainRunHandle,
   ChainRunListFilter,
   ChainRunRecord,
@@ -172,6 +173,27 @@ export class ChainRunRegistry {
     this.settleSteps(run)
     run.controller.abort()
     this.notifySettled(run)
+    return { ok: true, runId: id }
+  }
+
+  /**
+   * Drop a settled run from the table for good.
+   *
+   * The dock's close button says "I am done with this row", and a row hidden
+   * only in the browser comes back on the next `listRuns` — after a session
+   * switch, a reload, or in another tab. A live run is refused instead: its row
+   * owns the only cancel control, so it may only leave by being cancelled first.
+   *
+   * @param sessionId - when given, the run must belong to that session.
+   */
+  dismiss(id: string, sessionId?: string): ChainRunDismissResult {
+    const run = this.runs.get(id)
+    if (!run) return { ok: false, error: `unknown run: ${id}` }
+    if (sessionId !== undefined && run.sessionId !== sessionId) {
+      return { ok: false, error: 'run belongs to another session' }
+    }
+    if (run.status === 'running') return { ok: false, error: 'run is still running; cancel it first' }
+    this.runs.delete(id)
     return { ok: true, runId: id }
   }
 

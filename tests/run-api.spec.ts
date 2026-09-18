@@ -55,4 +55,24 @@ describe('smartCommands run remote api', () => {
     expect(await new SmartCommandsRunApi(runs).cancelRun({ runId: first, sessionId: 's2' }))
       .toEqual({ ok: false, error: 'run belongs to another session' })
   })
+
+  it('dismisses a settled run so the next list no longer carries it', async () => {
+    const { runs, first } = registryWithRuns()
+    const api = new SmartCommandsRunApi(runs)
+    runs.finish(first, { status: 'succeeded', text: 'done' })
+
+    expect(await api.dismissRun({ runId: first, sessionId: 's1' })).toEqual({ ok: true, runId: first })
+    expect((await api.listRuns()).runs.map(run => run.command)).toEqual(['audit'])
+  })
+
+  it('reports a refused dismissal as a result, keeping the run', async () => {
+    const { runs, first } = registryWithRuns()
+    const api = new SmartCommandsRunApi(runs)
+
+    expect(await api.dismissRun({ runId: first, sessionId: 's2' }))
+      .toEqual({ ok: false, error: 'run belongs to another session' })
+    expect(await api.dismissRun({ runId: first }))
+      .toEqual({ ok: false, error: 'run is still running; cancel it first' })
+    expect((await api.listRuns()).runs).toHaveLength(2)
+  })
 })

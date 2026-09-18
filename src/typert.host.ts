@@ -4,6 +4,8 @@ import {
   catalogScopeSchema,
   chainRunCancelRequestSchema,
   chainRunCancelResultSchema,
+  chainRunDismissRequestSchema,
+  chainRunDismissResultSchema,
   chainRunInventorySchema,
   chainRunRecordSchema,
   chainRunScopeSchema,
@@ -38,6 +40,8 @@ const schemas = {
   ChainRunInventory: chainRunInventorySchema,
   ChainRunCancelRequest: chainRunCancelRequestSchema,
   ChainRunCancelResult: chainRunCancelResultSchema,
+  ChainRunDismissRequest: chainRunDismissRequestSchema,
+  ChainRunDismissResult: chainRunDismissResultSchema,
 }
 
 export const TYPERT = {

@@ -1,4 +1,4 @@
-import type { ChainRunRecord, ChainRunStep } from '../types/runs.js'
+import type { ChainRunRecord, ChainRunStatus, ChainRunStep } from '../types/runs.js'
 
 /**
  * How long a settled run stays visible in the dock before it clears itself.
@@ -83,4 +83,24 @@ export function visibleRuns(
 /** Ids worth cancelling from one roster snapshot. */
 export function liveRunIds(runs: readonly ChainRunRecord[]): string[] {
   return runs.filter(isLive).map(run => run.id)
+}
+
+/** The statuses the panel's header account reports, most current first. */
+const HEADER_STATUS_ORDER: readonly ChainRunStatus[] = ['running', 'failed', 'succeeded', 'cancelled']
+
+export interface RunStatusCount {
+  readonly status: ChainRunStatus
+  readonly count: number
+}
+
+/**
+ * How the dock's header accounts for its roster — the equivalent of the todo
+ * dock's `8 已完成`. Only statuses that are actually present are returned, in
+ * {@link HEADER_STATUS_ORDER}, so the caller joins them with the same status
+ * labels it already shows per row.
+ */
+export function runStatusCounts(runs: readonly ChainRunRecord[]): RunStatusCount[] {
+  return HEADER_STATUS_ORDER
+    .map(status => ({ status, count: runs.filter(run => run.status === status).length }))
+    .filter(entry => entry.count > 0)
 }

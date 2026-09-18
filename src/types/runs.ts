@@ -105,3 +105,23 @@ export interface ChainRunCancelResult {
   readonly runId?: string
   readonly error?: string
 }
+
+/**
+ * Remote request for `dismissRun`.
+ *
+ * The dock's close button means "I am done with this row", so the row has to
+ * leave the *table*, not merely one browser's memory: a client-local hide
+ * resurrects on the next `listRuns` (session switch, reload, second tab).
+ */
+export interface ChainRunDismissRequest {
+  readonly runId: string
+  /** Scope guard: the panel only dismisses runs of its own session. */
+  readonly sessionId?: string
+}
+
+/** Remote result for `dismissRun`. */
+export interface ChainRunDismissResult {
+  readonly ok: boolean
+  readonly runId?: string
+  readonly error?: string
+}
