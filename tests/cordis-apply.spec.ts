@@ -64,8 +64,15 @@ describe('cordis apply', () => {
     expect(() => apply(forbiddenProxy({ tools }))).not.toThrow()
   })
 
-  it('registers TYPERT when typert is injectable', () => {
-    const seen: unknown[] = []
+  it('never re-registers the TYPERT host face, even when typert is injectable', () => {
+    // Regression guard for the 2026-10-19 `desktop welcome: Web RPC failed`
+    // startup failure. `package.json` exports `./typert`, so dsh-typert-loader
+    // registers this package's `#host` face itself, in one batch. A manual
+    // `typert.register(TYPERT)` from apply races that batch: when the loader
+    // loses it fails hard and WITHDRAWS every definition it owns — including
+    // unrelated ones such as `settings/describe`. `bundle-manifest.spec.ts`
+    // guards the other half of the pair (the `./typert` export must stay).
+    const registered: unknown[] = []
     const tools = {
       register() {
         return () => undefined
@@ -73,12 +80,11 @@ describe('cordis apply', () => {
     }
     const typert = {
       register(contribution: unknown) {
-        seen.push(contribution)
+        registered.push(contribution)
         return () => undefined
       },
     }
     expect(() => apply(forbiddenProxy({ tools, typert }))).not.toThrow()
-    expect(seen).toHaveLength(1)
-    expect(seen[0]).toMatchObject({ package: '@deepseek-ai/dsh-plugin-smart-commands', face: 'host' })
+    expect(registered).toHaveLength(0)
   })
 })

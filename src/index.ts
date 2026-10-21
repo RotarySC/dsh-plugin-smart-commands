@@ -8,7 +8,6 @@ import { asHostSubagents, modelRegistryFromContext, modelSessionFromConfiguratio
 import { pickWorkspaceRoot } from './loader/template-loader.js'
 import { registerHostSlashCommands, startSmartCommands } from './plugin.js'
 import { tryStartSmartCommandsGateway } from './remote/gateway.js'
-import { TYPERT } from './typert.host.js'
 import { DEFAULT_PLUGIN_CONFIG, type PluginConfig, type SmartCommandsHost } from './types/host.js'
 
 export const name = 'smart-commands'
@@ -29,6 +28,16 @@ export {
 } from './loader/template-loader.js'
 export { SmartCommandsCatalogApi } from './remote/catalog-api.js'
 export { SmartCommandsGateway, tryStartSmartCommandsGateway } from './remote/gateway.js'
+/**
+ * The Host face of the Remote contract — and the ONLY registration path.
+ *
+ * `dsh-typert-loader` scans packages exporting `./typert` and registers every
+ * `#host` face itself, in one batch. Calling `typert.register(TYPERT)` from
+ * `apply` registers the same face a second time; whichever side loses throws,
+ * and when that side is the loader it fails the whole batch and WITHDRAWS every
+ * definition it registered — including unrelated ones such as `settings/describe`,
+ * which then surfaces only as `desktop welcome: Web RPC failed`.
+ */
 export { TYPERT } from './typert.host.js'
 export { TYPERT_REMOTE } from './typert.remote-client.js'
 export type { InventoryTemplate, TemplateDocument, TemplateInventory, TemplateOrigin } from './types/catalog.js'
@@ -130,18 +139,13 @@ export function apply(ctx: CordisLikeContext, config: Config = {}): void {
   const activated = startSmartCommands(host)
   tryStartSmartCommandsGateway(ctx, activated.loader, activated.runs)
   if (typeof ctx.inject === 'function') {
-    ctx.inject(['typert'], scoped => {
-      const typert = service<{ register(contribution: typeof TYPERT): (() => void) | void }>(scoped, 'typert')
-      if (typert) {
-        try {
-          const disposeTypert = typert.register(TYPERT)
-          if (disposeTypert && typeof scoped.effect === 'function') {
-            scoped.effect(() => disposeTypert)
-          }
-        } catch {
-          // Duplicate registration from typert-loader is fine.
-        }
-      }
+    // `typert` becoming available is only the retry trigger for the gateway.
+    // The `./typert` export above is the single registration path — see its
+    // comment. Never add a `typert.register(TYPERT)` back here, and never wrap
+    // one in try/catch: the catch does not make a duplicate safe, it only hides
+    // which side lost the race, and a lost loader batch withdraws every
+    // definition it owns.
+    ctx.inject(['typert'], () => {
       tryStartSmartCommandsGateway(ctx, activated.loader, activated.runs)
     })
   }
