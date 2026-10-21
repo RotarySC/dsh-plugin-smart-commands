@@ -10,7 +10,12 @@ function listParametersOf(parameters: readonly {
   name: string
   wire: string
   source: string
-  codec: { mode: string; typeSymbol: string; schema: { parse(value: unknown): unknown } }
+  codec: {
+    mode: string
+    typeSymbol: string
+    create: () => { parse(value: unknown): unknown }
+    schema: { parse(value: unknown): unknown }
+  }
 }[]) {
   expect(parameters).toHaveLength(1)
   expect(parameters[0]).toMatchObject({
@@ -60,6 +65,30 @@ describe('typert artifacts', () => {
     expect(TYPERT.invocations.find(item => item.method === 'deleteTemplate')?.implementation).toBe('remove')
     expect(TYPERT_REMOTE.descriptors.find(item => item.method === 'deleteTemplate')?.implementation).toBeUndefined()
     expect(CLIENT_TYPERT_REMOTE.descriptors.find(item => item.method === 'deleteTemplate')?.implementation).toBeUndefined()
+  })
+
+  it('carries the codec fields every Typert runtime generation reads', () => {
+    // Regression guard for the 0.1.7-rc.1 upgrade: the protocol replaced the
+    // eager `schema` with a lazy `create()` factory, and every face (Host
+    // registry, Client registry, Host typert-loader) rejects a strict codec
+    // without it — which silently unregistered all ten smartCommands/* endpoints.
+    const codecs = TYPERT.invocations.flatMap(invocation => [
+      invocation.result,
+      ...invocation.parameters.map(parameter => parameter.codec),
+    ])
+    expect(codecs.length).toBeGreaterThan(0)
+    for (const codec of codecs) {
+      expect(typeof codec.create).toBe('function')
+      expect(codec.create()).toBe(codec.schema)
+    }
+    for (const descriptor of TYPERT_REMOTE.descriptors) {
+      expect(typeof descriptor.result.create).toBe('function')
+      expect(descriptor.result.create()).toBe(descriptor.result.schema)
+    }
+    for (const descriptor of CLIENT_TYPERT_REMOTE.descriptors) {
+      expect(typeof descriptor.result.create).toBe('function')
+      expect(descriptor.result.create()).toBe(descriptor.result.schema)
+    }
   })
 
   it('accepts the settings workspaceRoot on list for host, public remote, and client $mount', () => {

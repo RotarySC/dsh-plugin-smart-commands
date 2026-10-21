@@ -43,6 +43,29 @@ export function smartCommandsTypeSymbol(name: SmartCommandsSchemaName): string {
   return `${SMART_COMMANDS_PACKAGE}/types#${name}`
 }
 
+/**
+ * One strict codec, carrying every field either Typert runtime generation reads.
+ *
+ * `@deepseek-ai/dsh-typert-protocol@0.1.0-rc.8` holds the schema eagerly in
+ * `schema`; `0.1.7-rc.1` dropped that field for a lazy `create()` factory and
+ * rejects a codec without one (`typert: … strict codec has no create()
+ * factory`, raised by the Host registry, the Client registry, and the Host
+ * typert-loader alike). Shipping both keeps one artifact valid for either
+ * runtime, and the wire boundary only ever calls `create().parse(value)`, so
+ * handing back the same schema instance on every call is enough.
+ */
+function strictCodec(
+  name: SmartCommandsSchemaName,
+  schemas: Record<SmartCommandsSchemaName, SchemaLike>,
+) {
+  return {
+    mode: 'strict' as const,
+    typeSymbol: smartCommandsTypeSymbol(name),
+    create: () => schemas[name],
+    schema: schemas[name],
+  }
+}
+
 export function bindSmartCommandsDescriptors(
   schemas: Record<SmartCommandsSchemaName, SchemaLike>,
 ) {
@@ -56,16 +79,8 @@ export function bindSmartCommandsDescriptors(
       name: 'request' as const,
       wire: 'request' as const,
       source: 'json' as const,
-      codec: {
-        mode: 'strict' as const,
-        typeSymbol: smartCommandsTypeSymbol(endpoint.request),
-        schema: schemas[endpoint.request],
-      },
+      codec: strictCodec(endpoint.request, schemas),
     }],
-    result: {
-      mode: 'strict' as const,
-      typeSymbol: smartCommandsTypeSymbol(endpoint.result),
-      schema: schemas[endpoint.result],
-    },
+    result: strictCodec(endpoint.result, schemas),
   }))
 }
