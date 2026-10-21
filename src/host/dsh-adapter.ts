@@ -117,7 +117,7 @@ interface DshAgentLike {
   followup?(message: unknown): void
 }
 
-/** The plugin's own name in message provenance; the literal `docs/chain-run-followups.md` §5.1 fixes. */
+/** The plugin's own name in message provenance; §5.1 of the maintainers' internal notes fixes the literal. */
 const PLUGIN_NAME = 'smart-commands'
 
 function enqueue(agent: DshAgentLike, text: string, source: Record<string, unknown>): void {

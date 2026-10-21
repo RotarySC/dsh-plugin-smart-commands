@@ -10,3 +10,9 @@ graphify-out/
 # Local runtime state: this repo's own project-level templates/keywords used
 # for dogfooding the plugin (registers real slash commands in this workspace).
 .dsh/
+
+# Internal working documents: session handoff notes, maintainer investigation
+# logs and local issue scratchpads. Kept on disk, never distributed.
+HANDOFF.md
+docs/
+.scratch/
