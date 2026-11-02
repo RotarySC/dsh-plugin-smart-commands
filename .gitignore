@@ -16,3 +16,12 @@ graphify-out/
 HANDOFF.md
 docs/
 .scratch/
+
+# Local agent conventions and the domain glossary: they govern work in this
+# checkout, not readers of the repository (AGENTS.md §2).
+AGENTS.md
+CONTEXT.md
+
+# Template samples kept on disk only. The published package ships `dist/`,
+# `cordis.patch.yml` and this README (package.json "files").
+examples/
