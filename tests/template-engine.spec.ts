@@ -30,6 +30,20 @@ describe('template engine', () => {
     expect(splitCommandInput('a\n')).toEqual({ argsLine: 'a', supplement: '' })
   })
 
+  it('reports the arguments no placeholder consumed', () => {
+    const model = { id: 'deepseek-chat' }
+    expect(renderTemplate('Review $1', ['a.ts', 'extra'], model, 'x').unusedArgs).toEqual(['extra'])
+    expect(renderTemplate('Say $@', ['a', 'b'], model, 'x').unusedArgs).toEqual([])
+    expect(renderTemplate('From $2: ${@:2}', ['a', 'b', 'c'], model, 'x').unusedArgs).toEqual(['a'])
+    expect(renderTemplate('plain', ['a'], model, 'x').unusedArgs).toEqual(['a'])
+    expect(renderTemplate(
+      '<if-model is="deepseek-reasoner">$1<else>plain</if-model>',
+      ['a'],
+      model,
+      'x',
+    ).unusedArgs).toEqual(['a'])
+  })
+
   it('expands positional, aggregate, and slice placeholders from known literals', () => {
     const result = substituteArgs('$1 | $@ | $ARGUMENTS | ${@:2} | ${@:2:2}', ['one', 'two', 'three', 'four'])
     expect(result).toBe('one | one two three four | one two three four | two three four | two three')

@@ -133,14 +133,11 @@ export class CommandRunner {
       if (rendered.error) {
         return { ok: false, command: template.name, error: rendered.error }
       }
-      // Free-form text after the first newline, plus positional args for a
-      // template that declares no placeholders at all (those args would
-      // otherwise vanish), is appended verbatim instead of being substituted.
+      // Text after the first newline, plus positional args that no placeholder
+      // consumed, is appended verbatim instead of being dropped.
       const supplement = request.supplement?.trim() ?? ''
-      const appendBareArgs = args.length > 0
-        && extractTemplateSlots({ body: template.body }).length === 0
       const appended = [
-        ...appendBareArgs ? [args.join(' ')] : [],
+        ...rendered.unusedArgs.length > 0 ? [rendered.unusedArgs.join(' ')] : [],
         ...supplement ? [supplement] : [],
       ]
       const renderedText = appended.length > 0

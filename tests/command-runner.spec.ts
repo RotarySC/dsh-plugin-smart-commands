@@ -251,6 +251,51 @@ description: Plain note
     expect(result.text).toBe('模板测试\n\n补充描述')
   })
 
+  it('appends the arguments beyond the declared placeholders', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'partial',
+      content: `---
+description: Partial
+---
+Review $1
+`,
+    })
+    const extra = await runner.run(
+      { command: 'partial', args: ['a.ts', 'extra', 'more'] },
+      new AbortController().signal,
+    )
+    expect(extra.ok).toBe(true)
+    if (!extra.ok) throw new Error(extra.error)
+    expect(extra.text).toBe('Review a.ts\n\nextra more')
+
+    const combined = await runner.run(
+      { command: 'partial', args: ['a.ts', 'extra'], supplement: '补充' },
+      new AbortController().signal,
+    )
+    expect(combined.ok).toBe(true)
+    if (!combined.ok) throw new Error(combined.error)
+    expect(combined.text).toBe('Review a.ts\n\nextra\n\n补充')
+  })
+
+  it('does not duplicate arguments a placeholder already consumed', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'say',
+      content: `---
+description: Say
+---
+Say $@
+`,
+    })
+    const result = await runner.run({ command: 'say', args: ['a', 'b'] }, new AbortController().signal)
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toBe('Say a b')
+  })
+
   it('feeds the newline supplement to chain steps through {task}', async () => {
     const { runner } = await workspace()
     const result = await runner.run(
