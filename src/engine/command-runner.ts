@@ -133,6 +133,19 @@ export class CommandRunner {
       if (rendered.error) {
         return { ok: false, command: template.name, error: rendered.error }
       }
+      // Free-form text after the first newline, plus positional args for a
+      // template that declares no placeholders at all (those args would
+      // otherwise vanish), is appended verbatim instead of being substituted.
+      const supplement = request.supplement?.trim() ?? ''
+      const appendBareArgs = args.length > 0
+        && extractTemplateSlots({ body: template.body }).length === 0
+      const appended = [
+        ...appendBareArgs ? [args.join(' ')] : [],
+        ...supplement ? [supplement] : [],
+      ]
+      const renderedText = appended.length > 0
+        ? `${rendered.content.trimEnd()}\n\n${appended.join('\n\n')}`
+        : rendered.content
 
       const shouldDelegate = template.subagent !== false || template.continuable
       const overrideParentSession = !shouldDelegate && !template.chain?.length
@@ -142,7 +155,7 @@ export class CommandRunner {
         const steps: StepResult[] = []
         let lastText = ''
         let rounds = 0
-        const taskText = args.join(' ')
+        const taskText = [args.join(' '), supplement].filter(Boolean).join('\n\n')
         const bridge = new SubagentBridge({
           ...this.options.host.subagents ? { subagents: this.options.host.subagents } : {},
           ...parent ? { parent } : this.options.host.parentAgent ? { parent: this.options.host.parentAgent } : {},
@@ -175,7 +188,7 @@ export class CommandRunner {
             continue
           }
 
-          const prompt = bindSkills(rendered.content.trim(), template.skills)
+          const prompt = bindSkills(renderedText.trim(), template.skills)
           if (!prompt) {
             return { ok: false as const, command: template.name, error: `Prompt \`${template.name}\` rendered to an empty message.` }
           }

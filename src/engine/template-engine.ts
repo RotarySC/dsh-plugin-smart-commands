@@ -65,6 +65,22 @@ export function normalizeArgs(args: string[] | string | undefined): string[] {
   return typeof args === 'string' ? parseCommandArgs(args) : [...args]
 }
 
+/**
+ * Split slash-command input into the argument line and the supplement that
+ * follows the first newline. DSH hands the whole composer draft to the
+ * command, so the first line keeps the positional-argument contract while
+ * later lines are free-form context: they are never substituted into `$n` /
+ * `$@`, they are appended to the prompt instead.
+ */
+export function splitCommandInput(rawInput: string): { argsLine: string; supplement: string } {
+  const newline = /\r?\n/.exec(rawInput)
+  if (newline === null) return { argsLine: rawInput, supplement: '' }
+  return {
+    argsLine: rawInput.slice(0, newline.index),
+    supplement: rawInput.slice(newline.index + newline[0].length).trim(),
+  }
+}
+
 export function substituteArgs(content: string, args: string[]): string {
   let result = content
   result = result.replace(/\$(\d+)/g, (_, num: string) => {

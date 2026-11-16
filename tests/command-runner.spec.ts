@@ -214,6 +214,54 @@ Say $@
     expect(deleted.ok).toBe(true)
   })
 
+  it('appends text after the first newline as a supplement instead of arguments', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'notes',
+      content: `---
+description: Notes
+---
+Review $1
+`,
+    })
+    const result = await runner.run(
+      { command: 'notes', args: ['src/auth.ts'], supplement: '重点看并发与边界' },
+      new AbortController().signal,
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toBe('Review src/auth.ts\n\n重点看并发与边界')
+  })
+
+  it('appends same-line arguments when the template has no placeholders', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'plain-note',
+      content: `---
+description: Plain note
+---
+模板测试
+`,
+    })
+    const result = await runner.run({ command: 'plain-note', args: ['补充描述'] }, new AbortController().signal)
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toBe('模板测试\n\n补充描述')
+  })
+
+  it('feeds the newline supplement to chain steps through {task}', async () => {
+    const { runner } = await workspace()
+    const result = await runner.run(
+      { command: 'pipeline', args: ['auth'], supplement: '重点看并发' },
+      new AbortController().signal,
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toContain('重点看并发')
+  })
+
   it('registers /smart as a catalog-only command', async () => {
     const { root } = await workspace()
     const commands = new Map<string, {
@@ -309,6 +357,14 @@ Say $@
     expect(result).toEqual({
       kind: 'success',
       text: 'child:Review src/auth.ts with src/auth.ts focus=types',
+    })
+    const multiline = await commands.get('review')!.handler({
+      rawInput: 'src/auth.ts\n重点看并发',
+      signal: new AbortController().signal,
+    })
+    expect(multiline).toEqual({
+      kind: 'success',
+      text: 'child:Review src/auth.ts with src/auth.ts\n\n重点看并发',
     })
   })
 
