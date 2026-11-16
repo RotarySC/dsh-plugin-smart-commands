@@ -1,19 +1,29 @@
 import { isAbsolute, relative, resolve } from 'node:path'
 import { TemplateValidationError } from './frontmatter-parser.js'
 
-/** Catalog identity: loader file stems such as `001-research` and `review/code`. */
-export const TEMPLATE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_/-]*$/
-export const MAX_TEMPLATE_BYTES = 256 * 1024
+/**
+ * A catalog identity is a template file stem under a layer directory, e.g.
+ * `001-research`, `review/code`, or a hand-written name such as
+ * `Video generation`. The loader lists whatever `.md` files exist, so the
+ * settings API must be able to address the same names; this validation guards
+ * path safety, not charset.
+ */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+
+export function isValidTemplateName(name: string): boolean {
+  if (typeof name !== 'string' || name.length === 0) return false
+  if (name.includes('\\') || CONTROL_CHARS.test(name)) return false
+  if (isAbsolute(name) || /^[A-Za-z]:/.test(name)) return false
+  return name.split('/').every(part => part.length > 0 && part !== '.' && part !== '..')
+}
 
 export function assertTemplateName(name: string): void {
-  if (
-    !TEMPLATE_NAME_PATTERN.test(name)
-    || name.includes('..')
-    || name.split('/').some(part => part.length === 0)
-  ) {
+  if (!isValidTemplateName(name)) {
     throw new TemplateValidationError(`invalid template name: ${name}`)
   }
 }
+
+export const MAX_TEMPLATE_BYTES = 256 * 1024
 
 export function assertTemplateSize(content: string): void {
   const bytes = Buffer.byteLength(content, 'utf8')

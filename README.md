@@ -46,7 +46,7 @@ npm run build   # 生成 dist/index.js 与 dist/client.js（npm ci 的 prepare �
 dsh plugin --profile <name> add .
 ```
 
-安装后重启该 profile 的 `dsh web` 进程，斜杠命令与 Web 界面即生效。
+安装后重启运行该 profile 的 DSH 进程（`dsh web` 或桌面应用），斜杠命令与 Web 界面即生效。
 
 **从 registry 安装**：`dsh plugin --profile <name> add @deepseek-ai/dsh-plugin-smart-commands` 仅在你可访问到该包时可用。截至 2026-11-02，公开 npm registry 查无此包（`npm view @deepseek-ai/dsh-plugin-smart-commands version` 返回 404），因此以本地源码安装为准。
 
@@ -250,14 +250,15 @@ Chain 步骤的 `model:` 是**单个字符串**（不做 `provider/id` 拆分）
 
 `/smart` 与 `/help` 为**保留命令**，同名模板不会覆盖它们。
 
-**名称映射**：宿主命令名必须匹配 `^[a-z][a-z0-9_-]*$`，编号/嵌套模板会被自动映射：
+**名称映射**：宿主命令名必须匹配 `^[a-z][a-z0-9_-]*$`，编号/嵌套/含空格或大写的文件名会被自动映射：
 
 | 文件名 | 斜杠命令 |
 |---|---|
 | `001-research.md` | `/research` |
 | `review/code.md` | `/review-code` |
+| `Video generation.md` | `/video-generation` |
 
-模板增删或热重载时，斜杠命令会同步注册与注销。
+目录里的**原文件名**才是模板身份，设置页的编辑 / 复制 / 删除都按它操作；文件名可以含空格、大写与非 ASCII 字符（不能含 `..` 路径段、反斜杠或控制字符）。模板增删或热重载时，斜杠命令会同步注册与注销。
 
 ### 模型工具
 
@@ -301,11 +302,11 @@ Chain 步骤的 `model:` 是**单个字符串**（不做 `provider/id` 拆分）
 
 ## 自验
 
-在仓库根目录依次执行（2026-11-02 实测，Node v24.18.0）：
+在仓库根目录依次执行（2026-11-16 实测，Node v24.18.0）：
 
 ```sh
 npm run typecheck   # 宿主 + client 两套 tsconfig 均无类型错误
-npm test            # 23 个测试文件、190 个用例全部通过
+npm test            # 23 个测试文件、192 个用例全部通过
 npm run build       # 产出 dist/index.js 与 dist/client.js
 ```
 
@@ -353,7 +354,7 @@ src/
 | 改动范围 | 生效方式 |
 |---|---|
 | `src/client/` | `npm run build` 后**刷新**已打开的 `dsh web` 页面（另起 Vite 服务无效） |
-| 其他 `src/` | `npm run build` 后**重启** `dsh web` 进程（宿主从 `dist/*.js` 加载） |
+| 其他 `src/` | `npm run build` 后**重启**运行插件的 DSH 进程（`dsh web` 或桌面应用；宿主从 `dist/*.js` 加载） |
 
 仅刷新浏览器只会重新加载 `dist/client.js`，不会更新宿主侧代码。
 

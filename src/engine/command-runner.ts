@@ -3,7 +3,7 @@ import type { CommandTemplate, RuntimeOverrides } from '../types/template.js'
 import type { HostAgent, PluginConfig, SmartCommandsHost } from '../types/host.js'
 import { TemplateLoader } from '../loader/template-loader.js'
 import { TemplateValidationError } from '../loader/frontmatter-parser.js'
-import { TEMPLATE_NAME_PATTERN } from '../loader/names.js'
+import { isValidTemplateName } from '../loader/names.js'
 import { extractTemplateSlots, normalizeArgs, renderTemplate, splitModelSpecs, type ResolvedModelRef } from './template-engine.js'
 import { formatModel, parseModelRef, selectModel, withModelOverride } from './model-router.js'
 import { loadAvailableModels } from '../host/dsh-adapter.js'
@@ -13,8 +13,6 @@ import { ChainRunRegistry } from './run-registry.js'
 import { formatRunSummary } from './run-summary.js'
 import { SubagentBridge } from './subagent-bridge.js'
 import type { ChainRunRecord, ChainStepProgress } from '../types/runs.js'
-
-const COMMAND_NAME_PATTERN = TEMPLATE_NAME_PATTERN
 
 export interface CommandRunnerOptions {
   readonly host: SmartCommandsHost
@@ -346,7 +344,7 @@ export class CommandRunner {
 
   async manage(request: ManageTemplateRequest): Promise<{ ok: boolean; path?: string; error?: string }> {
     await this.ready()
-    if (!COMMAND_NAME_PATTERN.test(request.name) || request.name.includes('..')) {
+    if (!isValidTemplateName(request.name)) {
       return { ok: false, error: `invalid template name: ${request.name}` }
     }
     try {

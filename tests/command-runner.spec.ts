@@ -196,6 +196,24 @@ Draft $@
     expect(runner.list().some(item => item.name === 'lint')).toBe(true)
   })
 
+  it('manages and runs a template whose name is not a slug', async () => {
+    const { runner } = await workspace()
+    const content = `---
+description: Spaced name
+---
+Say $@
+`
+    const created = await runner.manage({ action: 'create', name: 'Video generation', content })
+    expect(created.ok).toBe(true)
+    expect(runner.list().some(item => item.name === 'Video generation')).toBe(true)
+
+    const result = await runner.run({ command: 'Video generation', args: ['hi'] }, new AbortController().signal)
+    expect(result.ok).toBe(true)
+
+    const deleted = await runner.manage({ action: 'delete', name: 'Video generation' })
+    expect(deleted.ok).toBe(true)
+  })
+
   it('registers /smart as a catalog-only command', async () => {
     const { root } = await workspace()
     const commands = new Map<string, {

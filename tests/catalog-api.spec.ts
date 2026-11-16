@@ -138,10 +138,43 @@ describe('catalog api', () => {
     expect(listed.templates.map(item => item.name).sort()).toEqual(['001-research', '001-research-copy'])
   })
 
+  it('round-trips a template whose file name is not a slug', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'smart-catalog-spaced-'))
+    const userDir = join(root, 'user')
+    const projectDir = join(root, 'project')
+    await mkdir(userDir, { recursive: true })
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(join(userDir, 'Video generation.md'), review)
+    const loader = new TemplateLoader({ userDir, projectDir })
+    loaders.push(loader)
+    await loader.reload()
+    expect(loader.inventory.templates.map(item => [item.name, item.slashName])).toEqual([
+      ['Video generation', 'video-generation'],
+    ])
+
+    const api = new SmartCommandsCatalogApi(loader)
+    const document = await api.read({ name: 'Video generation', origin: 'user' })
+    expect(document.content).toContain('Review $1')
+
+    const copied = await api.copy({
+      fromName: 'Video generation',
+      fromOrigin: 'user',
+      toName: 'Video generation copy',
+      toOrigin: 'user',
+    })
+    expect(copied).toEqual({ ok: true, name: 'Video generation copy', origin: 'user' })
+
+    const removed = await api.remove({ name: 'Video generation', origin: 'user' })
+    expect(removed.ok).toBe(true)
+    expect(loader.inventory.templates.map(item => item.name)).toEqual(['Video generation copy'])
+  })
+
   it('rejects an invalid name and oversize content', async () => {
     const { api } = await workspace()
-    const invalid = await api.write({ name: '../escape', origin: 'user', content: review, mode: 'create' })
-    expect(invalid.ok).toBe(false)
+    for (const name of ['../escape', 'a/../../b', 'C:/escape', 'a\\b', '..']) {
+      const invalid = await api.write({ name, origin: 'user', content: review, mode: 'create' })
+      expect(invalid.ok).toBe(false)
+    }
     const huge = await api.write({
       name: 'huge',
       origin: 'user',
