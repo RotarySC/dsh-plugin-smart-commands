@@ -65,6 +65,22 @@ export function normalizeArgs(args: string[] | string | undefined): string[] {
   return typeof args === 'string' ? parseCommandArgs(args) : [...args]
 }
 
+/**
+ * Split slash-command input into the argument line and the supplement that
+ * follows the first newline. DSH hands the whole composer draft to the
+ * command, so the first line keeps the positional-argument contract while
+ * later lines are free-form context: they are never substituted into `$n` /
+ * `$@`, they are appended to the prompt instead.
+ */
+export function splitCommandInput(rawInput: string): { argsLine: string; supplement: string } {
+  const newline = /\r?\n/.exec(rawInput)
+  if (newline === null) return { argsLine: rawInput, supplement: '' }
+  return {
+    argsLine: rawInput.slice(0, newline.index),
+    supplement: rawInput.slice(newline.index + newline[0].length).trim(),
+  }
+}
+
 export function substituteArgs(content: string, args: string[]): string {
   let result = content
   result = result.replace(/\$(\d+)/g, (_, num: string) => {
@@ -316,15 +332,45 @@ export function splitModelSpecs(model: string | undefined): string[] {
   return model.split(',').map(spec => spec.trim()).filter(Boolean)
 }
 
+/**
+ * 0-based indices of the positional arguments that placeholders in `content`
+ * consume. Run it on the conditionals-rendered text so placeholders inside an
+ * untaken `<if-model>` branch do not mark arguments as used.
+ */
+export function referencedArgIndices(content: string, argCount: number): Set<number> {
+  const used = new Set<number>()
+  if (/\$@|\$ARGUMENTS|@\$/.test(content)) {
+    for (let index = 0; index < argCount; index++) used.add(index)
+    return used
+  }
+  for (const match of content.matchAll(/\$(\d+)/g)) {
+    const index = Number.parseInt(match[1]!, 10) - 1
+    if (index >= 0 && index < argCount) used.add(index)
+  }
+  for (const match of content.matchAll(/\$\{@:(\d+)(?::(\d+))?\}/g)) {
+    const start = Math.max(0, Number.parseInt(match[1]!, 10) - 1)
+    const count = match[2] === undefined ? argCount - start : Number.parseInt(match[2], 10)
+    for (let index = start; index < Math.min(argCount, start + count); index++) used.add(index)
+  }
+  return used
+}
+
+export interface RenderTemplateResult extends RenderConditionalsResult {
+  /** Arguments no placeholder consumed; callers may append them as context. */
+  readonly unusedArgs: string[]
+}
+
 export function renderTemplate(
   content: string,
   args: string[],
   model: ResolvedModelRef,
   commandName?: string,
-): RenderConditionalsResult {
+): RenderTemplateResult {
   const rendered = renderTemplateConditionals(content, model, commandName)
+  const used = referencedArgIndices(rendered.content, args.length)
   return {
     content: substituteArgs(rendered.content, args),
+    unusedArgs: args.filter((_, index) => !used.has(index)),
     ...rendered.error ? { error: rendered.error } : {},
   }
 }

@@ -214,6 +214,99 @@ Say $@
     expect(deleted.ok).toBe(true)
   })
 
+  it('appends text after the first newline as a supplement instead of arguments', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'notes',
+      content: `---
+description: Notes
+---
+Review $1
+`,
+    })
+    const result = await runner.run(
+      { command: 'notes', args: ['src/auth.ts'], supplement: '重点看并发与边界' },
+      new AbortController().signal,
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toBe('Review src/auth.ts\n\n重点看并发与边界')
+  })
+
+  it('appends same-line arguments when the template has no placeholders', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'plain-note',
+      content: `---
+description: Plain note
+---
+模板测试
+`,
+    })
+    const result = await runner.run({ command: 'plain-note', args: ['补充描述'] }, new AbortController().signal)
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toBe('模板测试\n\n补充描述')
+  })
+
+  it('appends the arguments beyond the declared placeholders', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'partial',
+      content: `---
+description: Partial
+---
+Review $1
+`,
+    })
+    const extra = await runner.run(
+      { command: 'partial', args: ['a.ts', 'extra', 'more'] },
+      new AbortController().signal,
+    )
+    expect(extra.ok).toBe(true)
+    if (!extra.ok) throw new Error(extra.error)
+    expect(extra.text).toBe('Review a.ts\n\nextra more')
+
+    const combined = await runner.run(
+      { command: 'partial', args: ['a.ts', 'extra'], supplement: '补充' },
+      new AbortController().signal,
+    )
+    expect(combined.ok).toBe(true)
+    if (!combined.ok) throw new Error(combined.error)
+    expect(combined.text).toBe('Review a.ts\n\nextra\n\n补充')
+  })
+
+  it('does not duplicate arguments a placeholder already consumed', async () => {
+    const { runner } = await workspace()
+    await runner.manage({
+      action: 'create',
+      name: 'say',
+      content: `---
+description: Say
+---
+Say $@
+`,
+    })
+    const result = await runner.run({ command: 'say', args: ['a', 'b'] }, new AbortController().signal)
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toBe('Say a b')
+  })
+
+  it('feeds the newline supplement to chain steps through {task}', async () => {
+    const { runner } = await workspace()
+    const result = await runner.run(
+      { command: 'pipeline', args: ['auth'], supplement: '重点看并发' },
+      new AbortController().signal,
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.error)
+    expect(result.text).toContain('重点看并发')
+  })
+
   it('registers /smart as a catalog-only command', async () => {
     const { root } = await workspace()
     const commands = new Map<string, {
@@ -309,6 +402,14 @@ Say $@
     expect(result).toEqual({
       kind: 'success',
       text: 'child:Review src/auth.ts with src/auth.ts focus=types',
+    })
+    const multiline = await commands.get('review')!.handler({
+      rawInput: 'src/auth.ts\n重点看并发',
+      signal: new AbortController().signal,
+    })
+    expect(multiline).toEqual({
+      kind: 'success',
+      text: 'child:Review src/auth.ts with src/auth.ts\n\n重点看并发',
     })
   })
 

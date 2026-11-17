@@ -133,6 +133,16 @@ export class CommandRunner {
       if (rendered.error) {
         return { ok: false, command: template.name, error: rendered.error }
       }
+      // Text after the first newline, plus positional args that no placeholder
+      // consumed, is appended verbatim instead of being dropped.
+      const supplement = request.supplement?.trim() ?? ''
+      const appended = [
+        ...rendered.unusedArgs.length > 0 ? [rendered.unusedArgs.join(' ')] : [],
+        ...supplement ? [supplement] : [],
+      ]
+      const renderedText = appended.length > 0
+        ? `${rendered.content.trimEnd()}\n\n${appended.join('\n\n')}`
+        : rendered.content
 
       const shouldDelegate = template.subagent !== false || template.continuable
       const overrideParentSession = !shouldDelegate && !template.chain?.length
@@ -142,7 +152,7 @@ export class CommandRunner {
         const steps: StepResult[] = []
         let lastText = ''
         let rounds = 0
-        const taskText = args.join(' ')
+        const taskText = [args.join(' '), supplement].filter(Boolean).join('\n\n')
         const bridge = new SubagentBridge({
           ...this.options.host.subagents ? { subagents: this.options.host.subagents } : {},
           ...parent ? { parent } : this.options.host.parentAgent ? { parent: this.options.host.parentAgent } : {},
@@ -175,7 +185,7 @@ export class CommandRunner {
             continue
           }
 
-          const prompt = bindSkills(rendered.content.trim(), template.skills)
+          const prompt = bindSkills(renderedText.trim(), template.skills)
           if (!prompt) {
             return { ok: false as const, command: template.name, error: `Prompt \`${template.name}\` rendered to an empty message.` }
           }

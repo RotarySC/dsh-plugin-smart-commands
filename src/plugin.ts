@@ -4,7 +4,7 @@ import { asHostAgent } from './host/dsh-adapter.js'
 import { CommandRunner } from './engine/command-runner.js'
 import { ChainRunRegistry } from './engine/run-registry.js'
 import { slashCommandNameFor } from './engine/slash-name.js'
-import { extractTemplateSlots, parseCommandArgs } from './engine/template-engine.js'
+import { extractTemplateSlots, parseCommandArgs, splitCommandInput } from './engine/template-engine.js'
 import { resolveTemplateDirectories, TemplateLoader } from './loader/template-loader.js'
 import { createListSmartCommandsTool } from './tools/list-smart-commands.js'
 import { createManageTemplateTool } from './tools/manage-template.js'
@@ -132,8 +132,13 @@ export function registerTemplateSlashCommands(
             // would hold the composer's command transaction for the whole pipeline)
             // and a template that cannot detach falls back to the blocking path
             // inside that same call.
+            const { argsLine, supplement } = splitCommandInput(invocation.rawInput)
             const result = await runner.startDetached(
-              { command: template.name, args: parseCommandArgs(invocation.rawInput) },
+              {
+                command: template.name,
+                args: parseCommandArgs(argsLine),
+                ...supplement ? { supplement } : {},
+              },
               invocation.signal,
               asHostAgent(invocation.agent),
             )

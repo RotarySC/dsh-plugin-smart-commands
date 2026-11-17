@@ -3,6 +3,7 @@ import {
   parseCommandArgs,
   renderTemplate,
   renderTemplateConditionals,
+  splitCommandInput,
   substituteArgs,
 } from '../src/engine/template-engine.ts'
 
@@ -10,6 +11,37 @@ describe('template engine', () => {
   it('parses quoted argument phrases as single tokens', () => {
     expect(parseCommandArgs('alpha "two words" beta')).toEqual(['alpha', 'two words', 'beta'])
     expect(parseCommandArgs("one 'two three' four")).toEqual(['one', 'two three', 'four'])
+  })
+
+  it('splits the argument line from the newline supplement', () => {
+    expect(splitCommandInput('src/auth.ts focus=types')).toEqual({
+      argsLine: 'src/auth.ts focus=types',
+      supplement: '',
+    })
+    expect(splitCommandInput('\n重点看并发')).toEqual({ argsLine: '', supplement: '重点看并发' })
+    expect(splitCommandInput(' src/auth.ts\n重点看并发')).toEqual({
+      argsLine: ' src/auth.ts',
+      supplement: '重点看并发',
+    })
+    expect(splitCommandInput('a\r\n\r\n补充\n第二段')).toEqual({
+      argsLine: 'a',
+      supplement: '补充\n第二段',
+    })
+    expect(splitCommandInput('a\n')).toEqual({ argsLine: 'a', supplement: '' })
+  })
+
+  it('reports the arguments no placeholder consumed', () => {
+    const model = { id: 'deepseek-chat' }
+    expect(renderTemplate('Review $1', ['a.ts', 'extra'], model, 'x').unusedArgs).toEqual(['extra'])
+    expect(renderTemplate('Say $@', ['a', 'b'], model, 'x').unusedArgs).toEqual([])
+    expect(renderTemplate('From $2: ${@:2}', ['a', 'b', 'c'], model, 'x').unusedArgs).toEqual(['a'])
+    expect(renderTemplate('plain', ['a'], model, 'x').unusedArgs).toEqual(['a'])
+    expect(renderTemplate(
+      '<if-model is="deepseek-reasoner">$1<else>plain</if-model>',
+      ['a'],
+      model,
+      'x',
+    ).unusedArgs).toEqual(['a'])
   })
 
   it('expands positional, aggregate, and slice placeholders from known literals', () => {

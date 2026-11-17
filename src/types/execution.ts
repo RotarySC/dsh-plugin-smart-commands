@@ -38,6 +38,12 @@ export type CommandRunResult = CommandRunSuccess | CommandRunFailure
 export interface RunCommandRequest {
   readonly command: string
   readonly args?: string[] | string
+  /**
+   * Free-form text typed after the first newline of a slash-command input.
+   * It never feeds `$n` / `$@` substitution; it is appended to the rendered
+   * prompt as a trailing paragraph (or to `{task}` for chain templates).
+   */
+  readonly supplement?: string
   readonly overrides?: RuntimeOverrides
 }
 
